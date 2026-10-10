@@ -1,0 +1,96 @@
+{
+  "scope": "Only this task, no other thread read",
+  "thread": "01a11bc7-6e7b-7662-9d35-2f6f4f0800f9",
+  "log_file": "/Users/kola/Library/Logs/com.openai.codex/2026/10/08/codex-desktop-0a653e0e-b88f-4876-9938-a04e353aea68-45904-t0-i1-140842-0.log",
+  "events": [
+    {
+      "line": 941,
+      "text": "2026-10-08T14:09:14.049Z info [electron-message-handler] VM lifecycle environmentId=ccarenv_b64_Y2NhcmVudl82YWJiZjU1NTcyMDg4MTkxYjhmMGU2NzlmOWE5N2NhOQ hostId=durable rendererWebContentsId=2 rendererWindowAppearance=primary rendererWindowFocused=false rendererWindowId=2 rendererWindowVisible=false threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9 vmEvent=environment_connected vmProduct=unknown"
+    },
+    {
+      "line": 947,
+      "text": "2026-10-08T14:09:14.155Z info [electron-message-handler] VM lifecycle environmentId=ccarenv_b64_Y2NhcmVudl82YWJiZjU1NTcyMDg4MTkxYjhmMGU2NzlmOWE5N2NhOQ hostId=durable rendererWebContentsId=1 rendererWindowAppearance=primary rendererWindowFocused=true rendererWindowId=1 rendererWindowVisible=true threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9 vmEvent=environment_connected vmProduct=unknown"
+    },
+    {
+      "line": 952,
+      "text": "2026-10-08T14:09:15.449Z info [electron-message-handler] VM lifecycle environmentId=ccarenv_b64_Y2NhcmVudl82YWJiZjU1NTcyMDg4MTkxYjhmMGU2NzlmOWE5N2NhOQ hostId=durable rendererWebContentsId=2 rendererWindowAppearance=primary rendererWindowFocused=false rendererWindowId=2 rendererWindowVisible=false threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9 vmEvent=environment_connected vmProduct=unknown"
+    },
+    {
+      "line": 953,
+      "text": "2026-10-08T14:09:15.449Z info [electron-message-handler] VM lifecycle environmentId=ccarenv_b64_Y2NhcmVudl82YWJiZjU1NTcyMDg4MTkxYjhmMGU2NzlmOWE5N2NhOQ hostId=durable rendererWebContentsId=1 rendererWindowAppearance=primary rendererWindowFocused=true rendererWindowId=1 rendererWindowVisible=true threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9 vmEvent=environment_connected vmProduct=unknown"
+    },
+    {
+      "line": 967,
+      "text": "2026-10-08T14:09:17.913Z info [AppServerConnection] mcp_server_startup_status_updated error=null failureReason=null hostId=durable server=fusion status=starting threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9"
+    },
+    {
+      "line": 968,
+      "text": "2026-10-08T14:09:18.392Z warning [AppServerConnection] mcp_server_startup_status_updated error=\"MCP server failed to start.\" failureReason=null hostId=durable server=fusion status=failed threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9"
+    },
+    {
+      "line": 1378,
+      "text": "2026-10-08T14:12:26.405Z info [AppServerConnection] mcp_server_startup_status_updated error=null failureReason=null hostId=durable server=fusion status=starting threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9"
+    },
+    {
+      "line": 1380,
+      "text": "2026-10-08T14:12:26.800Z warning [AppServerConnection] mcp_server_startup_status_updated error=\"MCP server failed to start.\" failureReason=null hostId=durable server=fusion status=failed threadId=01a11bc7-6e7b-7662-9d35-2f6f4f0800f9"
+    }
+  ],
+  "status_fields": [
+    "authStatus",
+    "httpOrigin",
+    "name",
+    "pluginId",
+    "resourceTemplates",
+    "resources",
+    "runtimeStatus",
+    "serverCapabilities",
+    "serverInfo",
+    "tools",
+    "toolsError"
+  ],
+  "startup_notification_fields": [
+    "error",
+    "failureReason",
+    "name",
+    "status",
+    "threadId"
+  ],
+  "exposes_spawn_command_cwd_env_target": false,
+  "local_resolution": {
+    "name": "fusion",
+    "enabled": true,
+    "disabled_reason": null,
+    "transport": {
+      "type": "stdio",
+      "command": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3/mcp/launch.sh",
+      "args": [
+        "--project-root",
+        "/Users/kola/codex-fusion"
+      ],
+      "env": {
+        "PLUGIN_ROOT": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3",
+        "PLUGIN_DATA": "/Users/kola/.codex/plugins/data/agent-plugins/a0835318a5d45033e0e47cd39aabf501f98daf49f7fbb504c4671ffffe7ae8eb"
+      },
+      "env_vars": [],
+      "cwd": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3"
+    },
+    "enabled_tools": null,
+    "disabled_tools": null,
+    "startup_timeout_sec": null,
+    "tool_timeout_sec": null
+  },
+  "control_socket_exists": false,
+  "missing_observations": [
+    "actual exec-server spawn command and argv",
+    "effective cwd and PLUGIN_ROOT at spawn",
+    "executor filesystem/host mapping",
+    "which path produced ENOENT",
+    "whether current connection uses installed 0.3.3 declaration"
+  ],
+  "official_sources": [
+    "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
+    "https://developers.openai.com/plugins/build/plugins",
+    "https://learn.chatgpt.com/docs/app-server"
+  ]
+}

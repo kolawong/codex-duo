@@ -1,0 +1,62 @@
+[
+  {
+    "package": "@modelcontextprotocol/ext-apps",
+    "version": "2.0.3",
+    "license": "MIT"
+  },
+  {
+    "package": "@modelcontextprotocol/core",
+    "version": "2.3.1",
+    "license": "Apache-2.0"
+  },
+  {
+    "package": "@modelcontextprotocol/client",
+    "version": "2.3.1",
+    "license": "Apache-2.0"
+  },
+  {
+    "package": "@standard-schema/spec",
+    "version": "1.1.0",
+    "license": "MIT"
+  },
+  {
+    "package": "zod",
+    "version": "4.6.5",
+    "license": "MIT"
+  },
+  {
+    "package": "jose",
+    "version": "6.2.12",
+    "license": "MIT"
+  },
+  {
+    "package": "eventsource",
+    "version": "3.0.7",
+    "license": "MIT"
+  },
+  {
+    "package": "eventsource-parser",
+    "version": "3.1.1",
+    "license": "MIT"
+  },
+  {
+    "package": "pkce-challenge",
+    "version": "5.0.1",
+    "license": "MIT"
+  },
+  {
+    "package": "cross-spawn",
+    "version": "7.0.6",
+    "license": "MIT"
+  },
+  {
+    "package": "which",
+    "version": "2.0.2",
+    "license": "ISC"
+  },
+  {
+    "package": "isexe",
+    "version": "2.0.0",
+    "license": "ISC"
+  }
+]

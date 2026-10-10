@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "task": {
+    "acceptance": [
+      "Positive and negative inputs pass the existing tests.",
+      "Only math_ops.py changes."
+    ],
+    "allowed_paths": [
+      "math_ops.py"
+    ],
+    "goal": "Correct add(a, b) so it returns a + b.",
+    "schema_version": 1,
+    "task_id": "fusion-demo-001",
+    "tests": [
+      [
+        "python3",
+        "-B",
+        "-m",
+        "unittest",
+        "-v",
+        "test_math_ops.py"
+      ]
+    ]
+  },
+  "selection": {
+    "coordinator": {
+      "model": "gpt-6-astra",
+      "reasoning_effort": "high"
+    },
+    "worker": {
+      "model": "gpt-6-luna",
+      "reasoning_effort": "high"
+    }
+  },
+  "catalog_fingerprint": "8d58d205b5636d18b9904c4e5a6ec3f8bd211b38f88ffefbf797ce5fe5e22ca8",
+  "selection_revision": "3482d7a398edceb4bc64e364a2aedcdebcaf5b5132a920e6689ffe141a2f6cb8",
+  "handoff_id": "d5d5ae9a16393af33bd20335",
+  "state": "prepared_not_started",
+  "execution_started": false,
+  "applies_to_current_thread": false,
+  "scope": "new_fusion_task_with_explicit_role_settings",
+  "launch_approval_required": true,
+  "task_sha256": "580da72305228e4cf0195623a9594515628294f7763993285155cc6dee1b18fd",
+  "worker_spawn_parameters": {
+    "fork_turns": "none",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "high"
+  }
+}

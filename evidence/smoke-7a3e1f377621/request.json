@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "task_id": "smoke-7a3e1f377621",
+  "goal": "Run an explicitly requested native Fusion smoke test by correcting addition in an isolated fixture.",
+  "allowed_paths": [
+    "evidence/smoke-7a3e1f377621/workspace/math_ops.py"
+  ],
+  "acceptance": [
+    "Native worker uses saved gpt-6.1-sol model and high effort.",
+    "Only isolated math_ops.py is changed; addition is correct.",
+    "Fixture tests and project unit tests pass; evidence is valid and coordinator independently reviews it."
+  ],
+  "tests": [
+    [
+      "python3",
+      "-B",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "evidence/smoke-7a3e1f377621/workspace",
+      "-v"
+    ],
+    [
+      "python3",
+      "-B",
+      "-m",
+      "unittest",
+      "discover",
+      "-s",
+      "tests",
+      "-v"
+    ]
+  ]
+}

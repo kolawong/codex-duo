@@ -1,0 +1,18 @@
+{
+  "name": "fusion-minimal",
+  "version": "0.3.0",
+  "description": "Configure coordinator and worker models, prepare bounded handoffs, and verify compact evidence without automatically starting tasks.",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Fusion Minimal",
+    "shortDescription": "Plan, execute, verify",
+    "longDescription": "Local MCP App and native structured settings share model selections with future Fusion task handoffs. No model launch, running-thread model switch, or Hooks.",
+    "developerName": "Local prototype",
+    "category": "Productivity",
+    "defaultPrompt": "Use Fusion Minimal to prepare one bounded task and verify its evidence. Ask before any real dual-model run.",
+    "capabilities": [
+      "Interactive"
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18">
+  <!-- Rest state of the menu bar mark; the app draws it in code (MenuBarGlyph) to animate it. -->
+  <circle cx="6.2" cy="9" r="4.95" fill="none" stroke="#000" stroke-width="1.5"/>
+  <circle cx="11.8" cy="9" r="4.95" fill="none" stroke="#000" stroke-width="1.5"/>
+</svg>

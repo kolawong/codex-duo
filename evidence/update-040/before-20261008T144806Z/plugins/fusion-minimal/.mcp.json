@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fusion": {
+      "command": "./mcp/launch.sh",
+      "args": [
+        "--project-root",
+        "/Users/kola/codex-fusion"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

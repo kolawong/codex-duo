@@ -1,0 +1,8 @@
+diff --git a/math_ops.py b/math_ops.py
+index 24dbdc8..f2a6d8e 100644
+--- a/math_ops.py
++++ b/math_ops.py
+@@ -1,2 +1,2 @@
+ def add(a, b):
+-    return a - b
++    return a + b

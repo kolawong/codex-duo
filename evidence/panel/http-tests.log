@@ -1,0 +1,12 @@
+test_foreign_host_rejected (test_panel_http.PanelHTTPTests.test_foreign_host_rejected) ... ok
+test_foreign_origin_and_bad_token_rejected (test_panel_http.PanelHTTPTests.test_foreign_origin_and_bad_token_rejected) ... ok
+test_invalid_body (test_panel_http.PanelHTTPTests.test_invalid_body) ... ok
+test_invalid_model_returns_actionable_error (test_panel_http.PanelHTTPTests.test_invalid_model_returns_actionable_error) ... ok
+test_save_reload_and_prepare (test_panel_http.PanelHTTPTests.test_save_reload_and_prepare) ... ok
+test_static_route_does_not_expose_project_files (test_panel_http.PanelHTTPTests.test_static_route_does_not_expose_project_files) ... ok
+test_write_error_returns_503 (test_panel_http.PanelHTTPTests.test_write_error_returns_503) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 3.560s
+
+OK

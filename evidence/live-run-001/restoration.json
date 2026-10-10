@@ -1,0 +1,9 @@
+{
+  "project_config_restored_exactly": true,
+  "agents_enabled": false,
+  "plugin_enabled": false,
+  "hooks_enabled": false,
+  "global_config_unchanged": true,
+  "worker_turns": 1,
+  "correction_turns": 0
+}

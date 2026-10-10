@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+evidence/probe-state/
+evidence/current/probe-state/
+.fusion/
+
+native-build/node_modules/
+
+macos/.build/
+macos/dist/
+.DS_Store

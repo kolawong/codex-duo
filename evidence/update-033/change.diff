@@ -1,0 +1,205 @@
+--- before/plugins/fusion-minimal/mcp.json
++++ after/plugins/fusion-minimal/mcp.json
+@@ -3,10 +3,8 @@
+   "mcpServers": {
+     "fusion": {
+       "type": "stdio",
+-      "command": "python3",
++      "command": "./mcp/launch.sh",
+       "args": [
+-        "-B",
+-        "${PLUGIN_ROOT}/mcp/server.py",
+         "--project-root",
+         "/Users/kola/codex-fusion"
+       ],
+--- before/plugins/fusion-minimal/.mcp.json
++++ after/plugins/fusion-minimal/.mcp.json
+@@ -1,10 +1,8 @@
+ {
+   "mcpServers": {
+     "fusion": {
+-      "command": "python3",
++      "command": "./mcp/launch.sh",
+       "args": [
+-        "-B",
+-        "${PLUGIN_ROOT}/mcp/server.py",
+         "--project-root",
+         "/Users/kola/codex-fusion"
+       ],
+--- before/plugins/fusion-minimal/plugin.json
++++ after/plugins/fusion-minimal/plugin.json
+@@ -1,7 +1,7 @@
+ {
+   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+   "name": "fusion-minimal",
+-  "version": "0.3.1",
++  "version": "0.3.3",
+   "description": "Configure coordinator and worker models, prepare bounded handoffs, and verify compact evidence without automatically starting tasks.",
+   "author": {
+     "name": "Local prototype"
+--- before/plugins/fusion-minimal/.codex-plugin/plugin.json
++++ after/plugins/fusion-minimal/.codex-plugin/plugin.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "fusion-minimal",
+-  "version": "0.3.1",
++  "version": "0.3.3",
+   "description": "Configure coordinator and worker models, prepare bounded handoffs, and verify compact evidence without automatically starting tasks.",
+   "skills": "./skills/",
+   "interface": {
+--- before/plugins/fusion-minimal/mcp/server.py
++++ after/plugins/fusion-minimal/mcp/server.py
+@@ -11,7 +11,7 @@
+ from fusion_service import FusionService
+ from fusion_selection import SelectionError
+ 
+-VERSION = '0.3.1'
++VERSION = '0.3.3'
+ RESOURCE = 'ui://fusion-minimal/model-desk-v3'
+ MIME = 'text/html;profile=mcp-app'
+ EMPTY = {'type': 'object', 'properties': {}, 'additionalProperties': False}
+--- before/plugins/fusion-minimal/mcp/launch.sh
++++ after/plugins/fusion-minimal/mcp/launch.sh
+@@ -0,0 +1,17 @@
++#!/bin/sh
++# Resolve the packaged entrypoint without external utilities or shell profiles.
++set -eu
++# The bundled Codex CLI wrapper also needs system utilities. This affects only
++# this server and its children, never the user or host configuration.
++PATH="${PATH:+$PATH:}/usr/bin:/bin:/usr/sbin:/sbin"
++export PATH
++fusion_dir=$(CDPATH= cd -P -- "${0%/*}" && pwd)
++fusion_path_python=$(command -v python3 2>/dev/null || :)
++for fusion_python in "$fusion_path_python" /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
++    [ -n "$fusion_python" ] && [ -x "$fusion_python" ] || continue
++    if "$fusion_python" -B -c 'import sys; sys.exit(sys.version_info < (3, 11))' </dev/null 2>/dev/null; then
++        exec "$fusion_python" -B "$fusion_dir/server.py" "$@"
++    fi
++done
++printf '%s\n' 'Fusion requires an existing Python 3.11+ (PATH, /opt/homebrew/bin, or /usr/local/bin). No runtime was installed.' >&2
++exit 127
+--- before/tests/test_package_command.py
++++ after/tests/test_package_command.py
+@@ -1,5 +1,7 @@
+ """Regression coverage for commands accepted by an SDK but rejected by Codex."""
+ import json
++import os
++import shutil
+ from pathlib import Path
+ import subprocess
+ import tempfile
+@@ -28,6 +30,7 @@
+         with tempfile.TemporaryDirectory() as tmp:
+             root = Path(tmp) / 'plugin'; root.mkdir()
+             (root / 'launch').write_text('fixture')
++            (root / 'launch').chmod(0o755)
+             validate_stdio_command('./launch', root)
+             outside = Path(tmp) / 'outside'; outside.write_text('fixture')
+             (root / 'escape').symlink_to(outside)
+@@ -51,3 +54,38 @@
+                              json.loads((PLUGIN/'plugin.json').read_text())['version'])
+             self.assertEqual(len(responses[1]['result']['tools']), 7)
+             self.assertFalse((Path(tmp)/'.fusion').exists())
++
++    def test_launcher_without_path_and_from_unrelated_cwd(self):
++        # The supported local macOS deployment already has Homebrew Python.
++        if not any(Path(p).is_file() for p in ['/opt/homebrew/bin/python3', '/usr/local/bin/python3']):
++            self.skipTest('requires the existing local Python deployment')
++        with tempfile.TemporaryDirectory(prefix='fusion space ') as tmp:
++            copied = Path(tmp) / 'plugin space'
++            shutil.copytree(PLUGIN, copied)
++            (Path(tmp) / 'project').mkdir()
++            config = json.loads((copied / 'mcp.json').read_text())['mcpServers']['fusion']
++            args = [str(Path(tmp) / 'project') if a == str(ROOT) else a for a in config['args']]
++            env = dict(os.environ, PATH='', PLUGIN_ROOT='/nonexistent/stale-root')
++            with self.assertRaises(FileNotFoundError):
++                subprocess.run(['python3', '--version'], env=env, check=True)
++            requests = [{'jsonrpc':'2.0','id':1,'method':'initialize','params':{}},
++                        {'jsonrpc':'2.0','id':2,'method':'tools/list','params':{}},
++                        {'jsonrpc':'2.0','id':3,'method':'resources/list','params':{}},
++                        {'jsonrpc':'2.0','id':4,'method':'tools/call',
++                         'params':{'name':'fusion.settings_read','arguments':{}}}]
++            run = subprocess.run([str(copied / config['command']), *args], cwd='/tmp', env=env,
++                input=''.join(json.dumps(r)+'\n' for r in requests), capture_output=True, text=True, timeout=10)
++            self.assertEqual(run.returncode, 0, run.stderr)
++            replies = [json.loads(line) for line in run.stdout.splitlines()]
++            self.assertEqual(len(replies[1]['result']['tools']), 7)
++            self.assertEqual(replies[2]['result']['resources'][0]['uri'], 'ui://fusion-minimal/model-desk-v3')
++            self.assertFalse(replies[3]['result'].get('isError'), replies[3])
++            self.assertEqual(set(replies[3]['result']['structuredContent']['values']), {'coordinator', 'worker'})
++            self.assertFalse((Path(tmp) / 'project' / '.fusion').exists())
++
++    def test_nonexecutable_launcher_rejected(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            (root / 'launch').write_text('#!/bin/sh\n')
++            with self.assertRaisesRegex(ValueError, 'executable'):
++                validate_stdio_command('./launch', root)
+--- before/tools/validate_static.py
++++ after/tools/validate_static.py
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python3
+ """Validate the minimal package and companion config, without executing models."""
+ import hashlib
++import os
+ import argparse
+ import json
+ from pathlib import Path
+@@ -24,6 +25,8 @@
+     target = root / relative
+     if not target.resolve().is_relative_to(root) or not target.is_file():
+         raise ValueError('stdio command escapes the plugin or is missing')
++    if not os.access(target, os.X_OK):
++        raise ValueError('stdio launcher must be executable')
+ 
+ 
+ def main():
+@@ -85,7 +88,7 @@
+     check(True, 'portable stdio command satisfies executable/path rules')
+     check({k: v for k, v in mcp.items() if k != 'type'} == legacy, 'MCP compatibility command synchronized')
+     check(overlay['mcpServers'] == './.mcp.json', 'compatibility MCP reference resolves')
+-    check(mcp['args'] == ['-B', '${PLUGIN_ROOT}/mcp/server.py', '--project-root', '/Users/kola/codex-fusion'],
++    check(mcp['command'] == './mcp/launch.sh' and mcp['args'] == ['--project-root', '/Users/kola/codex-fusion'],
+           'MCP project storage fixed by deployment, not tool inputs')
+     check((PLUGIN / 'mcp/server.py').is_file() and (PLUGIN / 'ui/model-desk.html').is_file(),
+           'packaged MCP entrypoint and built view exist')
+--- before/README.md
++++ after/README.md
+@@ -1,3 +1,15 @@
++# Fusion Minimal 0.3.3
++
++在 0.3.2 插件内相对启动器基础上，为服务子进程补充标准系统 PATH，解决空 PATH 下内置 CLI 包装器无法读取模型目录的问题。不会修改全局环境或安全设置。回归测试现在覆盖空 PATH 下的完整设置读取；实际宿主工具加载与 UI 验收结果见 [0.3.3 报告](evidence/update-033/REPORT.md)。
++
++以下保留先前版本说明。
++
++# Fusion Minimal 0.3.2
++
++插件内 `./mcp/launch.sh` 避免宿主直接解析裸 `python3`，从 PATH 或既有 Homebrew 路径选择 Python 3.11+。不安装运行时、不修改全局环境。新增空 PATH、含空格路径和无关工作目录的打包入口回归测试。安装、宿主调用与 UI 渲染的验证结果分别记录在 [0.3.2 报告](evidence/update-032/REPORT.md)。
++
++以下保留先前版本说明。
++
+ # Fusion Minimal 0.3.1
+ 
+ 修正便携 MCP 的启动命令为 `python3`，补充宿主命令路径规则校验和实际清单启动回归测试。此补丁沿用原插件身份、模型选择和部署目录；不启动模型。当前安装和原生宿主验收结果以 [0.3.1 更新报告](evidence/update-031/REPORT.md) 为准。
+--- before/NATIVE-INSTALL.md
++++ after/NATIVE-INSTALL.md
+@@ -1,14 +1,9 @@
+-# Fusion Minimal 0.3.1 本地更新
++# Fusion Minimal 0.3.3 本地更新
+ 
+-用户已批准修正命令声明、增加校验、更新版本并本地重装。沿用 `fusion-local` 市场和 `fusion-minimal` 身份，不另建全局 MCP 条目。
++MCP 声明使用插件内可执行入口 `./mcp/launch.sh --project-root /Users/kola/codex-fusion`，工作目录仍为 `${PLUGIN_ROOT}`。宿主将相对命令解析为安装缓存中的路径。启动器由 `/bin/sh` 运行，首先检查 PATH 中的 Python，然后检查既有 `/opt/homebrew/bin/python3`、`/usr/local/bin/python3`、`/usr/bin/python3`；仅接受 Python 3.11+。没有安装依赖、加载 shell profile 或更改全局 PATH。
+ 
+-- 启动声明：`python3 -B ${PLUGIN_ROOT}/mcp/server.py --project-root /Users/kola/codex-fusion`，工作目录 `${PLUGIN_ROOT}`。
+-- Python 必须能够运行本包；本轮 shell 解析到既有 Homebrew Python 3.14.7。桌面子进程解析仍须宿主实测。
+-- 从源码按版本安装，不直接编辑缓存。0.3.0 的历史证据和安装记录保留。
+-- 读取插件文件、项目 `.fusion/` 和内置模型目录；仅按已有功能写项目选择及交接。无任意命令/路径接口。
+-- 更新不改变全局模型、其他插件、旧 `fusion-local` HTTP 服务或 Hook 信任，不创建模型任务、不重启、不升级或发布。
+-- 本机进程权限维持原安装范围，代码约束不等于操作系统强制沙箱。
++用户已授权本插件修复和本地重装。先运行回归测试和静态检查，再执行官方 `codex plugin add fusion-minimal@fusion-local --json`。不直接编辑安装缓存，不创建全局 MCP，不信任 Hooks，不启动模型。
+ 
+-先验证命令规则及清单启动，再用本机 CLI 执行 `plugin add fusion-minimal@fusion-local --json`。安装后分别核对缓存版本、实际宿主工具发现和面板。需要额外刷新、重启或权限时先报告，不能把独立握手当成原生界面验收。
++验收必须区分安装成功、独立 MCP 握手、实际会话工具调用、面板资源和 UI 渲染。详见 [本轮报告](evidence/update-033/REPORT.md)。
+ 
+-结果及未通过项见 [更新报告](evidence/update-031/REPORT.md)。旧版检查见 [0.3.0 安装记录](evidence/install-001/REPORT.md)。
++启动器为本进程及子进程追加 `/usr/bin:/bin:/usr/sbin:/sbin`，使内置 CLI 的 shell 包装器也能在受限 PATH 环境中使用系统工具。全局配置和宿主环境保持不变。

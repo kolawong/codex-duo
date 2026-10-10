@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "sdk": "@modelcontextprotocol/client 2.3.1",
+  "checks": [
+    "stdio handshake",
+    "tool schema discovery",
+    "resource read",
+    "structured settings read/update",
+    "shared saved state",
+    "handoff snapshot",
+    "execution adapter without execution",
+    "invalid effort error"
+  ],
+  "model_calls": 0
+}

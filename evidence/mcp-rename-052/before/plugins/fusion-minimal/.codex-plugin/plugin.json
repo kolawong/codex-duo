@@ -1,0 +1,20 @@
+{
+  "name": "fusion-minimal",
+  "version": "0.5.1",
+  "description": "Codex Duo 项目代理设置，一个规划，一个执行。",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Duo",
+    "shortDescription": "一个规划，一个执行",
+    "longDescription": "共享项目代理设置；当前聊天负责规划与验收，执行代理完成任务。",
+    "developerName": "Local prototype",
+    "category": "Productivity",
+    "defaultPrompt": "Use the saved Codex Duo defaults for this project. Keep planning and verification in this chat, prepare task details internally, and use one native worker when supported. Reuse existing task authorization; do not reopen settings unless needed.",
+    "capabilities": [
+      "Interactive"
+    ],
+    "logo": "assets/tandem.svg",
+    "composerIcon": "assets/tandem.svg"
+  },
+  "mcpServers": "./.mcp.json"
+}

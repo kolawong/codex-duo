@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "codex-duo": {
+      "type": "stdio",
+      "command": "./mcp/launch.sh",
+      "args": [
+        "--project-root",
+        "/Users/kola/codex-fusion"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

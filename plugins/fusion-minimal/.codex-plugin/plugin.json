@@ -1,0 +1,20 @@
+{
+  "name": "fusion-minimal",
+  "version": "0.7.0",
+  "description": "Codex Duo 全局默认与项目设置，一个规划，一个执行。",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Duo",
+    "shortDescription": "一个规划，一个执行",
+    "longDescription": "共享全局默认与项目独立设置；当前聊天负责规划与验收，执行代理完成任务。",
+    "developerName": "Local prototype",
+    "category": "Productivity",
+    "defaultPrompt": "Resolve saved project overrides before global Codex Duo defaults using this chat's actual project root. Keep planning and verification in this chat, prepare task details internally, and dispatch supported native workers within saved max_parallel_workers, actual host capacity, and the shared total max_worker_turns budget. Simple tasks use one worker; reserve every initial or correction dispatch with the parent ledger. Reuse existing task authorization; do not reopen settings unless needed.",
+    "capabilities": [
+      "Interactive"
+    ],
+    "logo": "assets/tandem.svg",
+    "composerIcon": "assets/tandem.svg"
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,23 @@
+{
+  "name": "fusion",
+  "enabled": true,
+  "disabled_reason": null,
+  "transport": {
+    "type": "stdio",
+    "command": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3/mcp/launch.sh",
+    "args": [
+      "--project-root",
+      "/Users/kola/codex-fusion"
+    ],
+    "env": {
+      "PLUGIN_ROOT": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3",
+      "PLUGIN_DATA": "/Users/kola/.codex/plugins/data/agent-plugins/a0835318a5d45033e0e47cd39aabf501f98daf49f7fbb504c4671ffffe7ae8eb"
+    },
+    "env_vars": [],
+    "cwd": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3"
+  },
+  "enabled_tools": null,
+  "disabled_tools": null,
+  "startup_timeout_sec": null,
+  "tool_timeout_sec": null
+}

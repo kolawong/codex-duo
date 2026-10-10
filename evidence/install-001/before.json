@@ -1,0 +1,26 @@
+{
+  "global_config_sha256": "de2c04a8bb438d6ed211fa114e27dbaf222e5fa6204f68328d3cc5835aa2f096",
+  "unrelated_config_sha256": "2cb430822476eb64ed2feaa992d98aafea01541802551198e48f3d1fb1ee20a7",
+  "model": "gpt-6.1-sol",
+  "model_reasoning_effort": "high",
+  "marketplaces": {
+    "openai-curated": {
+      "source_type": "local",
+      "source": "\\\\?\\/Users/kola/.codex/.tmp/plugins"
+    },
+    "openai-api-curated": {
+      "source_type": "local",
+      "source": "\\\\?\\/Users/kola/.codex/.tmp/plugins"
+    },
+    "openai-bundled": {
+      "source_type": "local",
+      "source": "/Users/kola/.codex/.tmp/bundled-marketplaces/openai-bundled"
+    },
+    "openai-primary-runtime": {
+      "source_type": "local",
+      "source": "/Users/kola/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+    }
+  },
+  "fusion_plugin": null,
+  "plugin_package_sha256": "4a896babc3e49265359cf47c2af855934108fb002993e26c80bada845756ab4a"
+}

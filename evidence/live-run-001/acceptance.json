@@ -1,0 +1,30 @@
+{
+  "status": "accepted",
+  "task_id": "fusion-live-001",
+  "coordinator_selection": "gpt-6.1-sol/high per authorized current task; global default independently matches",
+  "worker_model_selection": "native spawn explicitly requested gpt-6-luna/high and was accepted",
+  "worker_turns": 1,
+  "correction_turns": 0,
+  "custom_agent_toml_auto_discovery": "not_verified",
+  "baseline_exit_code": 1,
+  "independent_test_exit_code": 0,
+  "independent_tests_passed": 2,
+  "independent_test_log": {
+    "path": "coordinator-tests.log",
+    "sha256": "4bfde359a04c0de56719d0d7629a8bff0e6b248e46ff7f36ca4167fd83cdcbf0"
+  },
+  "changed_paths": [
+    "math_ops.py"
+  ],
+  "diff_inspected": true,
+  "evidence_gate": "passed",
+  "protected_prototype_files_unchanged": true,
+  "global_config_unchanged": true,
+  "blockers": [],
+  "remaining_limitations": [
+    "Named TOML automatic discovery has not been verified.",
+    "No independent billing or per-request reroute telemetry is exposed by the native spawn tool.",
+    "Plugin is not installed; this validates native dual-model handoff with local prototype files."
+  ],
+  "coordinator_validation_note": "Initial exact-text diff comparison was too strict for standard Git headers; normalized unified hunk matches exactly. No worker correction or code change was needed."
+}

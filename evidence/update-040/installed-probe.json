@@ -1,0 +1,30 @@
+{
+  "installed_version": "0.4.0",
+  "tool_count": 9,
+  "defaults": {
+    "configured": true,
+    "state": "ready",
+    "project_root": "/Users/kola/codex-fusion",
+    "revision": "a3aad87247a1778756245667017c4f564aad129fa009c87dcc4dcb482d6282ab",
+    "workflow": {
+      "activation": "automatic_project",
+      "coordinator_mode": "current_thread",
+      "max_worker_turns": 3
+    },
+    "worker": {
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high"
+    },
+    "coordinator": {
+      "mode": "current_thread",
+      "selected_model": null
+    },
+    "next_tool": "fusion.begin",
+    "execution_started": false,
+    "instructions": "Use these saved settings for the authorized task. Do not reopen settings, ask for JSON or handoff paths, or request the same approval again. Discover a native worker tool before dispatch; this MCP server does not launch models."
+  },
+  "installed_source_matches": true,
+  "model_calls": 0,
+  "current_chat_connection": "previous 0.3.3 process; fusion.open still returned the previous response after installation",
+  "next_chat_load_required": true
+}

@@ -1,0 +1,480 @@
+{
+  "exit_code": 0,
+  "responses": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "fusion-minimal",
+          "version": "0.3.1"
+        },
+        "capabilities": {
+          "tools": {},
+          "resources": {},
+          "experimental": {
+            "openai/settings": {
+              "readTool": "fusion.settings_read",
+              "updateTool": "fusion.settings_update"
+            }
+          }
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "tools": [
+          {
+            "name": "fusion.open",
+            "title": "Fusion 模型工作台",
+            "description": "Fusion 模型工作台。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app",
+                  "model"
+                ],
+                "resourceUri": "ui://fusion-minimal/model-desk-v3"
+              },
+              "openai/ui": {
+                "entrypoints": [
+                  {
+                    "type": "thread"
+                  }
+                ]
+              }
+            },
+            "icons": [
+              {
+                "src": "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 20 20%22 fill=%22none%22%3E%3Cpath d=%22M5 16V4h10M5 10h8%22 stroke=%22currentColor%22 stroke-width=%221.33%22/%3E%3C/svg%3E",
+                "mimeType": "image/svg+xml"
+              }
+            ]
+          },
+          {
+            "name": "fusion.state",
+            "title": "读取模型面板状态",
+            "description": "读取模型面板状态。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app"
+                ]
+              }
+            }
+          },
+          {
+            "name": "fusion.save",
+            "title": "保存未来任务模型组合",
+            "description": "保存未来任务模型组合。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "selection": {
+                  "type": "object",
+                  "properties": {
+                    "coordinator": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string"
+                        },
+                        "reasoning_effort": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "model",
+                        "reasoning_effort"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "worker": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string"
+                        },
+                        "reasoning_effort": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "model",
+                        "reasoning_effort"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "coordinator",
+                    "worker"
+                  ],
+                  "additionalProperties": false
+                },
+                "expected_revision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "selection",
+                "expected_revision"
+              ],
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app"
+                ]
+              }
+            }
+          },
+          {
+            "name": "fusion.prepare",
+            "title": "生成未启动的任务交接包",
+            "description": "生成未启动的任务交接包。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "task": {
+                  "type": "object"
+                },
+                "expected_revision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task",
+                "expected_revision"
+              ],
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app",
+                  "model"
+                ]
+              }
+            }
+          },
+          {
+            "name": "fusion.execution_plan",
+            "title": "读取交接执行适配说明",
+            "description": "读取交接执行适配说明。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "handoff_id": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{24}$"
+                }
+              },
+              "required": [
+                "handoff_id"
+              ],
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app",
+                  "model"
+                ]
+              }
+            }
+          },
+          {
+            "name": "fusion.settings_read",
+            "title": "读取 Fusion 原生设置",
+            "description": "读取 Fusion 原生设置。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app"
+                ]
+              }
+            },
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "schema": {
+                  "type": "object"
+                },
+                "values": {
+                  "type": "object"
+                },
+                "layout": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              },
+              "required": [
+                "schema",
+                "values"
+              ]
+            }
+          },
+          {
+            "name": "fusion.settings_update",
+            "title": "更新 Fusion 原生设置",
+            "description": "更新 Fusion 原生设置。仅访问 Fusion 项目配置和交接，不调用模型。",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "set": {
+                  "type": "object",
+                  "properties": {
+                    "coordinator": {
+                      "type": "string"
+                    },
+                    "worker": {
+                      "type": "string"
+                    }
+                  },
+                  "minProperties": 1,
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "set"
+              ],
+              "additionalProperties": false
+            },
+            "annotations": {
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "_meta": {
+              "ui": {
+                "visibility": [
+                  "app"
+                ]
+              }
+            },
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "values": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "values"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"schema\": {\"type\": \"object\", \"properties\": {\"coordinator\": {\"type\": \"string\", \"title\": \"主控模型与强度\", \"enum\": [\"gpt-6-astra / low\", \"gpt-6-astra / medium\", \"gpt-6-astra / high\", \"gpt-6-astra / xhigh\", \"gpt-6-astra / max\", \"gpt-6-astra / ultra\", \"gpt-6.1-sol / low\", \"gpt-6.1-sol / medium\", \"gpt-6.1-sol / high\", \"gpt-6.1-sol / xhigh\", \"gpt-6.1-sol / max\", \"gpt-6.1-sol / ultra\", \"gpt-6-sol / low\", \"gpt-6-sol / medium\", \"gpt-6-sol / high\", \"gpt-6-sol / xhigh\", \"gpt-6-sol / max\", \"gpt-6-sol / ultra\", \"gpt-6-luna / low\", \"gpt-6-luna / medium\", \"gpt-6-luna / high\", \"gpt-6-luna / xhigh\", \"gpt-6-luna / max\", \"gpt-5.6-sol / low\", \"gpt-5.6-sol / medium\", \"gpt-5.6-sol / high\", \"gpt-5.6-sol / xhigh\", \"gpt-5.6-sol / max\", \"gpt-5.6-sol / ultra\", \"gpt-5.6-terra / low\", \"gpt-5.6-terra / medium\", \"gpt-5.6-terra / high\", \"gpt-5.6-terra / xhigh\", \"gpt-5.6-terra / max\", \"gpt-5.6-terra / ultra\", \"gpt-5.6-luna / low\", \"gpt-5.6-luna / medium\", \"gpt-5.6-luna / high\", \"gpt-5.6-luna / xhigh\", \"gpt-5.6-luna / max\", \"gpt-5.5 / low\", \"gpt-5.5 / medium\", \"gpt-5.5 / high\", \"gpt-5.5 / xhigh\"], \"description\": \"模型 / 推理强度。仅影响未来交接，不切换当前会话，不启动任务。\"}, \"worker\": {\"type\": \"string\", \"title\": \"执行模型与强度\", \"enum\": [\"gpt-6-astra / low\", \"gpt-6-astra / medium\", \"gpt-6-astra / high\", \"gpt-6-astra / xhigh\", \"gpt-6-astra / max\", \"gpt-6-astra / ultra\", \"gpt-6.1-sol / low\", \"gpt-6.1-sol / medium\", \"gpt-6.1-sol / high\", \"gpt-6.1-sol / xhigh\", \"gpt-6.1-sol / max\", \"gpt-6.1-sol / ultra\", \"gpt-6-sol / low\", \"gpt-6-sol / medium\", \"gpt-6-sol / high\", \"gpt-6-sol / xhigh\", \"gpt-6-sol / max\", \"gpt-6-sol / ultra\", \"gpt-6-luna / low\", \"gpt-6-luna / medium\", \"gpt-6-luna / high\", \"gpt-6-luna / xhigh\", \"gpt-6-luna / max\", \"gpt-5.6-sol / low\", \"gpt-5.6-sol / medium\", \"gpt-5.6-sol / high\", \"gpt-5.6-sol / xhigh\", \"gpt-5.6-sol / max\", \"gpt-5.6-sol / ultra\", \"gpt-5.6-terra / low\", \"gpt-5.6-terra / medium\", \"gpt-5.6-terra / high\", \"gpt-5.6-terra / xhigh\", \"gpt-5.6-terra / max\", \"gpt-5.6-terra / ultra\", \"gpt-5.6-luna / low\", \"gpt-5.6-luna / medium\", \"gpt-5.6-luna / high\", \"gpt-5.6-luna / xhigh\", \"gpt-5.6-luna / max\", \"gpt-5.5 / low\", \"gpt-5.5 / medium\", \"gpt-5.5 / high\", \"gpt-5.5 / xhigh\"], \"description\": \"模型 / 推理强度。仅影响未来交接，不切换当前会话，不启动任务。\"}}}, \"values\": {\"coordinator\": \"gpt-6-astra / high\", \"worker\": \"gpt-6-luna / high\"}, \"layout\": [{\"kind\": \"group\", \"title\": \"Fusion · 新任务默认配置\", \"items\": [{\"kind\": \"property\", \"property\": \"coordinator\"}, {\"kind\": \"property\", \"property\": \"worker\"}, {\"kind\": \"tool\", \"tool\": \"fusion.open\", \"title\": \"打开模型面板\", \"description\": \"预设、保存恢复、任务交接；不启动模型。\"}]}]}"
+          }
+        ],
+        "structuredContent": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "coordinator": {
+                "type": "string",
+                "title": "主控模型与强度",
+                "enum": [
+                  "gpt-6-astra / low",
+                  "gpt-6-astra / medium",
+                  "gpt-6-astra / high",
+                  "gpt-6-astra / xhigh",
+                  "gpt-6-astra / max",
+                  "gpt-6-astra / ultra",
+                  "gpt-6.1-sol / low",
+                  "gpt-6.1-sol / medium",
+                  "gpt-6.1-sol / high",
+                  "gpt-6.1-sol / xhigh",
+                  "gpt-6.1-sol / max",
+                  "gpt-6.1-sol / ultra",
+                  "gpt-6-sol / low",
+                  "gpt-6-sol / medium",
+                  "gpt-6-sol / high",
+                  "gpt-6-sol / xhigh",
+                  "gpt-6-sol / max",
+                  "gpt-6-sol / ultra",
+                  "gpt-6-luna / low",
+                  "gpt-6-luna / medium",
+                  "gpt-6-luna / high",
+                  "gpt-6-luna / xhigh",
+                  "gpt-6-luna / max",
+                  "gpt-5.6-sol / low",
+                  "gpt-5.6-sol / medium",
+                  "gpt-5.6-sol / high",
+                  "gpt-5.6-sol / xhigh",
+                  "gpt-5.6-sol / max",
+                  "gpt-5.6-sol / ultra",
+                  "gpt-5.6-terra / low",
+                  "gpt-5.6-terra / medium",
+                  "gpt-5.6-terra / high",
+                  "gpt-5.6-terra / xhigh",
+                  "gpt-5.6-terra / max",
+                  "gpt-5.6-terra / ultra",
+                  "gpt-5.6-luna / low",
+                  "gpt-5.6-luna / medium",
+                  "gpt-5.6-luna / high",
+                  "gpt-5.6-luna / xhigh",
+                  "gpt-5.6-luna / max",
+                  "gpt-5.5 / low",
+                  "gpt-5.5 / medium",
+                  "gpt-5.5 / high",
+                  "gpt-5.5 / xhigh"
+                ],
+                "description": "模型 / 推理强度。仅影响未来交接，不切换当前会话，不启动任务。"
+              },
+              "worker": {
+                "type": "string",
+                "title": "执行模型与强度",
+                "enum": [
+                  "gpt-6-astra / low",
+                  "gpt-6-astra / medium",
+                  "gpt-6-astra / high",
+                  "gpt-6-astra / xhigh",
+                  "gpt-6-astra / max",
+                  "gpt-6-astra / ultra",
+                  "gpt-6.1-sol / low",
+                  "gpt-6.1-sol / medium",
+                  "gpt-6.1-sol / high",
+                  "gpt-6.1-sol / xhigh",
+                  "gpt-6.1-sol / max",
+                  "gpt-6.1-sol / ultra",
+                  "gpt-6-sol / low",
+                  "gpt-6-sol / medium",
+                  "gpt-6-sol / high",
+                  "gpt-6-sol / xhigh",
+                  "gpt-6-sol / max",
+                  "gpt-6-sol / ultra",
+                  "gpt-6-luna / low",
+                  "gpt-6-luna / medium",
+                  "gpt-6-luna / high",
+                  "gpt-6-luna / xhigh",
+                  "gpt-6-luna / max",
+                  "gpt-5.6-sol / low",
+                  "gpt-5.6-sol / medium",
+                  "gpt-5.6-sol / high",
+                  "gpt-5.6-sol / xhigh",
+                  "gpt-5.6-sol / max",
+                  "gpt-5.6-sol / ultra",
+                  "gpt-5.6-terra / low",
+                  "gpt-5.6-terra / medium",
+                  "gpt-5.6-terra / high",
+                  "gpt-5.6-terra / xhigh",
+                  "gpt-5.6-terra / max",
+                  "gpt-5.6-terra / ultra",
+                  "gpt-5.6-luna / low",
+                  "gpt-5.6-luna / medium",
+                  "gpt-5.6-luna / high",
+                  "gpt-5.6-luna / xhigh",
+                  "gpt-5.6-luna / max",
+                  "gpt-5.5 / low",
+                  "gpt-5.5 / medium",
+                  "gpt-5.5 / high",
+                  "gpt-5.5 / xhigh"
+                ],
+                "description": "模型 / 推理强度。仅影响未来交接，不切换当前会话，不启动任务。"
+              }
+            }
+          },
+          "values": {
+            "coordinator": "gpt-6-astra / high",
+            "worker": "gpt-6-luna / high"
+          },
+          "layout": [
+            {
+              "kind": "group",
+              "title": "Fusion · 新任务默认配置",
+              "items": [
+                {
+                  "kind": "property",
+                  "property": "coordinator"
+                },
+                {
+                  "kind": "property",
+                  "property": "worker"
+                },
+                {
+                  "kind": "tool",
+                  "tool": "fusion.open",
+                  "title": "打开模型面板",
+                  "description": "预设、保存恢复、任务交接；不启动模型。"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "model_calls": 0,
+  "settings_writes": 0,
+  "note": "Independent process; not desktop host discovery."
+}

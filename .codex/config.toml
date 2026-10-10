@@ -1,0 +1,15 @@
+# Fusion is enabled for user-requested project development; saved defaults govern each task.
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 1
+default_subagent_model = "gpt-6.1-sol"
+default_subagent_reasoning_effort = "high"
+
+[features]
+hooks = false
+
+[plugins."fusion-minimal@fusion-local"]
+enabled = true

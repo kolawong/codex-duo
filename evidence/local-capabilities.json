@@ -1,0 +1,41 @@
+{
+  "checked_at": "2026-10-08",
+  "app_path": "/Applications/ChatGPT.app",
+  "bundle_id": "com.openai.codex",
+  "app_version": "26.1002.52244",
+  "app_build": "13536",
+  "cli": {
+    "layoutVersion": 1,
+    "version": "0.162.0-alpha.2",
+    "target": "aarch64-apple-darwin",
+    "variant": "codex",
+    "entrypoint": "bin/codex",
+    "resourcesDir": "codex-resources",
+    "pathDir": "codex-path"
+  },
+  "global_model": "gpt-6.1-sol",
+  "global_effort": "high",
+  "agents_settings": {},
+  "enabled_plugin_config": [
+    "computer-use@openai-bundled",
+    "visualize@openai-bundled",
+    "documents@openai-primary-runtime",
+    "pdf@openai-primary-runtime",
+    "spreadsheets@openai-primary-runtime",
+    "presentations@openai-primary-runtime",
+    "template-creator@openai-primary-runtime",
+    "browser@openai-bundled",
+    "chrome@openai-bundled",
+    "codex-app-tools@openai-bundled",
+    "messages@openai-bundled",
+    "unified-computer-use@openai-bundled",
+    "code-review@openai-bundled"
+  ],
+  "existing_agent": {
+    "name": "luna_worker",
+    "description": "Fast worker for clear, narrowly scoped, and repeatable tasks.",
+    "model": "gpt-5.6-luna",
+    "model_reasoning_effort": "max"
+  },
+  "global_config_sha256_before": "de2c04a8bb438d6ed211fa114e27dbaf222e5fa6204f68328d3cc5835aa2f096"
+}

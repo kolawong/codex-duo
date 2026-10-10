@@ -1,0 +1,196 @@
+{
+  "exit_code": 0,
+  "fusion": [
+    {
+      "pluginId": "fusion-minimal@fusion-local",
+      "name": "fusion-minimal",
+      "marketplaceName": "fusion-local",
+      "version": "0.3.1",
+      "installed": true,
+      "enabled": true,
+      "source": {
+        "source": "local",
+        "path": "/Users/kola/codex-fusion/plugins/fusion-minimal"
+      },
+      "marketplaceSource": {
+        "sourceType": "local",
+        "source": "/Users/kola/codex-fusion"
+      },
+      "installPolicy": "AVAILABLE",
+      "authPolicy": "ON_INSTALL"
+    }
+  ],
+  "other_identities": [
+    {
+      "name": "documents",
+      "version": "26.1007.11041",
+      "enabled": true
+    },
+    {
+      "name": "pdf",
+      "version": "26.1007.11041",
+      "enabled": true
+    },
+    {
+      "name": "spreadsheets",
+      "version": "26.1007.11041",
+      "enabled": true
+    },
+    {
+      "name": "presentations",
+      "version": "26.1007.11041",
+      "enabled": true
+    },
+    {
+      "name": "template-creator",
+      "version": "26.1007.11041",
+      "enabled": true
+    },
+    {
+      "name": "codex-app-tools",
+      "version": "0.1.5",
+      "enabled": true
+    },
+    {
+      "name": "browser",
+      "version": "26.1002.52244",
+      "enabled": true
+    },
+    {
+      "name": "unified-computer-use",
+      "version": "26.1002.52244",
+      "enabled": true
+    },
+    {
+      "name": "chrome",
+      "version": "26.1002.52244",
+      "enabled": true
+    },
+    {
+      "name": "computer-use",
+      "version": "1.0.1001394",
+      "enabled": true
+    },
+    {
+      "name": "messages",
+      "version": "1.0.1001394",
+      "enabled": true
+    },
+    {
+      "name": "code-review",
+      "version": "26.1002.52244",
+      "enabled": true
+    },
+    {
+      "name": "visualize",
+      "version": "1.0.47",
+      "enabled": true
+    },
+    {
+      "name": "gmail",
+      "version": "0.1.10",
+      "enabled": true
+    },
+    {
+      "name": "google-drive",
+      "version": "0.1.16",
+      "enabled": true
+    },
+    {
+      "name": "github",
+      "version": "0.1.12-5f7cd798dc99",
+      "enabled": true
+    },
+    {
+      "name": "app-6a314a73f8ac819195b0d55e36b9c609",
+      "version": "2.2.2",
+      "enabled": true
+    },
+    {
+      "name": "app-69ea4ed2cf7c8191b742ef3622479ddd",
+      "version": "4.0.1",
+      "enabled": true
+    },
+    {
+      "name": "notion",
+      "version": "3.0.0",
+      "enabled": true
+    },
+    {
+      "name": "google-calendar",
+      "version": "1.2.7",
+      "enabled": true
+    },
+    {
+      "name": "figma",
+      "version": "15.0.0",
+      "enabled": true
+    },
+    {
+      "name": "data-analytics",
+      "version": "1.0.11",
+      "enabled": true
+    },
+    {
+      "name": "product-design",
+      "version": "0.1.56",
+      "enabled": true
+    },
+    {
+      "name": "codex-security",
+      "version": "0.1.32",
+      "enabled": true
+    },
+    {
+      "name": "creative-production",
+      "version": "0.1.25",
+      "enabled": true
+    },
+    {
+      "name": "google-contacts",
+      "version": "1.0.0",
+      "enabled": true
+    },
+    {
+      "name": "plugin-creator",
+      "version": "0.1.22",
+      "enabled": true
+    },
+    {
+      "name": "defense-factory",
+      "version": "0.1.1",
+      "enabled": true
+    },
+    {
+      "name": "swiftui-expert",
+      "version": "5.2.0",
+      "enabled": true
+    },
+    {
+      "name": "openai-templates",
+      "version": "0.1.1",
+      "enabled": true
+    },
+    {
+      "name": "pages",
+      "version": "0.1.21",
+      "enabled": true
+    },
+    {
+      "name": "sites",
+      "version": "0.1.75",
+      "enabled": true
+    },
+    {
+      "name": "plugin-management",
+      "version": "0.1.0",
+      "enabled": true
+    },
+    {
+      "name": "work-pets",
+      "version": "0.1.6",
+      "enabled": true
+    }
+  ],
+  "stderr": ""
+}

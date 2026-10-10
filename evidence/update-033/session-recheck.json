@@ -1,0 +1,24 @@
+{
+  "thread_id": "01a11bc7-6e7b-7662-9d35-2f6f4f0800f9",
+  "fusion_tools": [],
+  "resource_list_error": "MCP startup failed: exec-server rejected request (-32603): No such file or directory (os error 2)",
+  "resource_templates_error": "MCP startup failed: exec-server rejected request (-32603): No such file or directory (os error 2)",
+  "local_cli": {
+    "version": "0.3.3",
+    "enabled": true,
+    "command": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.3.3/mcp/launch.sh",
+    "command_exists": true,
+    "executable": true,
+    "cwd_exists": true
+  },
+  "latest_observed_startup": {
+    "starting_utc": "2026-10-08T14:09:17.913Z",
+    "failed_utc": "2026-10-08T14:09:18.392Z",
+    "hostId": "durable",
+    "server": "fusion",
+    "error": "MCP server failed to start.",
+    "log_file": "codex-desktop-0a653e0e-b88f-4876-9938-a04e353aea68-45904-t0-i1-140842-0.log"
+  },
+  "control_socket_exists": false,
+  "conclusion": "Fresh startup failed; local CLI success is not evidence that this durable session can start the server. Exact missing path is not reported."
+}

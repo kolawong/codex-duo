@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ground" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#3B3833"/>
+      <stop offset="0.55" stop-color="#22201D"/>
+      <stop offset="1" stop-color="#141311"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF6E8" stop-opacity="0.12"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.62">
+      <stop offset="0" stop-color="#FFE6C8"/>
+      <stop offset="0.55" stop-color="#F29A5E"/>
+      <stop offset="1" stop-color="#C9522A"/>
+    </radialGradient>
+    <clipPath id="left-disc"><circle cx="420" cy="512" r="196"/></clipPath>
+    <clipPath id="near-top"><rect x="430" y="260" width="164" height="170"/></clipPath>
+    <!-- only the right ring's own band at the top crossing, where the left ring passes over it -->
+    <mask id="top-crossing" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#000"/>
+      <circle cx="604" cy="512" r="196" fill="none" stroke="#fff" stroke-width="62" clip-path="url(#near-top)"/>
+    </mask>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#ground)"/>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#sheen)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="185.5" fill="none" stroke="#FFF6E8" stroke-opacity="0.1"/>
+
+  <!-- where planning and execution meet -->
+  <circle cx="604" cy="512" r="196" fill="url(#glow)" clip-path="url(#left-disc)"/>
+
+  <!-- two linked rings: left over right at the top crossing, right over left at the bottom -->
+  <circle cx="420" cy="512" r="196" fill="none" stroke="#F4EEE3" stroke-width="62"/>
+  <circle cx="604" cy="512" r="196" fill="none" stroke="#B9AE9E" stroke-width="62"/>
+  <g mask="url(#top-crossing)">
+    <circle cx="420" cy="512" r="196" fill="none" stroke="#000000" stroke-opacity="0.4" stroke-width="80"/>
+    <circle cx="420" cy="512" r="196" fill="none" stroke="#F4EEE3" stroke-width="62"/>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+{
+  "pluginId": "fusion-minimal@fusion-local",
+  "name": "fusion-minimal",
+  "marketplaceName": "fusion-local",
+  "version": "0.4.0",
+  "installedPath": "/Users/kola/.codex/plugins/cache/fusion-local/fusion-minimal/0.4.0",
+  "authPolicy": "ON_INSTALL"
+}

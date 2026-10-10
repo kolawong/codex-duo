@@ -1,0 +1,5 @@
+interface:
+  display_name: "Codex Duo"
+  short_description: "当前聊天规划验收，一位执行代理完成任务"
+policy:
+  allow_implicit_invocation: true

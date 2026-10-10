@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Validate the minimal package and companion config, without executing models."""
+import hashlib
+import json
+from pathlib import Path
+import re
+import tomllib
+
+ROOT = Path(__file__).resolve().parents[1]
+PLUGIN = ROOT / "plugins/fusion-minimal"
+
+
+def main():
+    checks = []
+    def check(condition, message):
+        if not condition:
+            raise ValueError(message)
+        checks.append(message)
+
+    manifest = json.loads((PLUGIN / "plugin.json").read_text())
+    overlay = json.loads((PLUGIN / ".codex-plugin/plugin.json").read_text())
+    check(manifest["name"] == PLUGIN.name == overlay["name"], "plugin identity matches")
+    check(bool(re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"])), "semantic version")
+    check(all(manifest[k] == overlay[k] for k in ["name", "version", "description"]),
+          "portable and compatibility identity synchronized")
+    interface = manifest["extensions"]["com.openai"]["interface"]
+    check(interface == overlay["interface"], "presentation synchronized")
+    check(len(interface["shortDescription"]) <= 30, "subtitle at most 30 characters")
+    check(not any(k in manifest for k in ["skills", "interface", "mcpServers", "apps"]),
+          "portable manifest avoids compatibility-only fields")
+    check(overlay["skills"] == "./skills/", "compatibility skill root")
+    skill = PLUGIN / "skills/fusion/SKILL.md"
+    parts = skill.read_text().split("---", 2)
+    frontmatter = dict(line.split(":", 1) for line in parts[1].strip().splitlines())
+    check(frontmatter.get("name", "").strip() == skill.parent.name, "skill name matches folder")
+    check(bool(frontmatter.get("description", "").strip()), "skill has trigger description")
+    for path in ["references/contract.md", "templates/task.json", "scripts/fusion.py"]:
+        check((skill.parent / path).is_file(), "skill resource exists: " + path)
+    config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
+    agent = tomllib.loads((ROOT / ".codex/agents/fusion_worker.toml").read_text())
+    catalog = {x["slug"]: x for x in json.loads((ROOT / "evidence/bundled-models.json").read_text())}
+    for name, data in [("coordinator", config), ("worker", agent)]:
+        check(data["model"] in catalog, name + " model appears in bundled catalog")
+        efforts = [x["effort"] for x in catalog[data["model"]]["supported_reasoning_levels"]]
+        check(data["model_reasoning_effort"] in efforts, name + " effort advertised locally")
+    check(all(isinstance(agent.get(k), str) and agent[k] for k in [
+        "name", "description", "developer_instructions"]), "custom agent required fields")
+    check(agent["name"] == "fusion_worker", "custom agent name matches filename")
+    check(config["agents"]["enabled"] is False, "child execution disabled by default")
+    check(config["agents"]["max_concurrent_threads_per_session"] == 1, "one worker limit prepared")
+    check(config["plugins"]["fusion-minimal@fusion-local"]["enabled"] is False,
+          "plugin disabled by default")
+    check(config["features"]["hooks"] is False, "project hooks disabled")
+    market = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+    check(market["name"] == "fusion-local", "marketplace name matches enable key")
+    entry = market["plugins"][0]
+    check((ROOT / entry["source"]["path"]).resolve() == PLUGIN, "marketplace source resolves")
+    check(not any(p.is_symlink() for p in PLUGIN.rglob("*")), "package has no symlinks")
+    check(not any(p.name in ["hooks.json", ".app.json"] for p in PLUGIN.rglob("*")),
+          "no Hooks or hosted app dependency")
+    mcp = json.loads((PLUGIN / 'mcp.json').read_text())['mcpServers']['fusion']
+    legacy = json.loads((PLUGIN / '.mcp.json').read_text())['mcpServers']['fusion']
+    check(mcp['type'] == 'stdio' and 'url' not in mcp, 'MCP uses local stdio without a network listener')
+    check({k: v for k, v in mcp.items() if k != 'type'} == legacy, 'MCP compatibility command synchronized')
+    check(overlay['mcpServers'] == './.mcp.json', 'compatibility MCP reference resolves')
+    check(mcp['args'] == ['-B', '${PLUGIN_ROOT}/mcp/server.py', '--project-root', '/Users/kola/codex-fusion'],
+          'MCP project storage fixed by deployment, not tool inputs')
+    check((PLUGIN / 'mcp/server.py').is_file() and (PLUGIN / 'ui/model-desk.html').is_file(),
+          'packaged MCP entrypoint and built view exist')
+    check('src="/app.js"' not in (PLUGIN / 'ui/model-desk.html').read_text(), 'MCP view is self contained')
+    baseline = json.loads((ROOT / "evidence/local-capabilities.json").read_text())
+    after = hashlib.sha256((Path.home() / '.codex/config.toml').read_bytes()).hexdigest()
+    check(after == baseline["global_config_sha256_before"], "global config hash unchanged")
+    result = {"status": "passed", "check_count": len(checks), "checks": checks,
+              "model_calls": 0, "global_config_sha256_after": after,
+              "limitations": ["Structural checks; not the full Agent Plugins schema validator.",
+                              "Named custom agent auto-discovery and independent model allocation telemetry remain unverified."]}
+    (ROOT / "evidence/current").mkdir(parents=True, exist_ok=True)
+    (ROOT / "evidence/current/static-validation.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

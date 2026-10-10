@@ -1,0 +1,314 @@
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,3 +3,5 @@
+ evidence/probe-state/
+ evidence/current/probe-state/
+ .fusion/
++
++native-build/node_modules/
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,27 @@
+-# Fusion Minimal 0.2.0
++# Fusion Minimal 0.3.0
++
++## 原生插件候选版本（0.3.0）
++
++已新增本地 stdio MCP、原生结构化设置、对话入口与自包含 MCP App。它们与原网页面板共用模型目录、配置存储和任务快照；保存和生成仍不启动模型，不切换当前线程。
++
++**当前状态：源码和无模型验证完成，尚未安装到 Codex。** 已通过 63 项 Python 测试、33 项静态检查、官方 MCP 客户端互通，以及测试宿主中的设置/面板双向保存恢复。测试宿主不是原生安装实测。
++
++安装前请读 [具体安装步骤与权限范围](NATIVE-INSTALL.md)。交付包为 `fusion-minimal-0.3.0.zip`；原生证据在 `evidence/native/`。没有新增全局配置、Hooks 或实际模型任务。
++
++复现：
++
++```sh
++python3 -B -m unittest discover -s tests -v
++python3 -B tools/validate_static.py
++# 仅重建 UI 或运行 SDK 互通测试时需要 Node 开发依赖：
++npm ci --prefix native-build --ignore-scripts --no-audit --no-fund
++node native-build/build.mjs
++node native-build/test-client.mjs
++# 可选测试宿主，只写临时状态：
++python3 -B tools/native_harness.py
++```
++
++下面的 0.2.0 说明保留为独立网页入口的用法和历史验收记录；其“尚未注册/未包含 MCP”描述对应当时版本，不代表 0.3.0 源码内容。
+ 
+ ## 模型选择面板（0.2.0）
+ 
+--- a/evidence/current/static-validation.json
++++ b/evidence/current/static-validation.json
+@@ -1,6 +1,6 @@
+ {
+   "status": "passed",
+-  "check_count": 27,
++  "check_count": 33,
+   "checks": [
+     "plugin identity matches",
+     "semantic version",
+@@ -27,7 +27,13 @@
+     "marketplace name matches enable key",
+     "marketplace source resolves",
+     "package has no symlinks",
+-    "no MCP, Hooks, or app dependency",
++    "no Hooks or hosted app dependency",
++    "MCP uses local stdio without a network listener",
++    "MCP compatibility command synchronized",
++    "compatibility MCP reference resolves",
++    "MCP project storage fixed by deployment, not tool inputs",
++    "packaged MCP entrypoint and built view exist",
++    "MCP view is self contained",
+     "global config hash unchanged"
+   ],
+   "model_calls": 0,
+--- a/panel/server.py
++++ b/panel/server.py
+@@ -15,38 +15,16 @@
+                               presets, prepare_handoff)
+ 
+ 
+-class PanelService:
++from fusion_service import FusionService
++
++
++class PanelService(FusionService):
+     def __init__(self, directory, catalog_loader=read_catalog):
+-        self.store = SelectionStore(directory)
+-        self.catalog_loader = catalog_loader
++        super().__init__(directory, catalog_loader)
+         self.token = secrets.token_urlsafe(32)
+-        self.template = json.loads((SCRIPTS.parent / 'templates/task.json').read_text())
+ 
+     def state(self):
+-        try:
+-            catalog = self.catalog_loader()
+-        except SelectionError as exc:
+-            return {'catalog': None, 'error': {'code': exc.code, 'message': str(exc)},
+-                    'csrf_token': self.token, 'task_template': self.template}
+-        current = self.store.read(catalog)
+-        return {'catalog': catalog, 'presets': presets(catalog), 'default': default_selection(catalog),
+-                'saved': current, 'csrf_token': self.token, 'task_template': self.template,
+-                'storage_path': str(self.store.path), 'current_thread_model': 'unknown',
+-                'native_model_switch': False, 'execution_started': False}
+-
+-    def save(self, body):
+-        return self.store.save(body.get('selection'), self.catalog_loader(), body.get('expected_revision'))
+-
+-    def prepare(self, body):
+-        with self.store.lock:
+-            catalog = self.catalog_loader()
+-            saved = self.store.read(catalog)
+-            if not saved['document']:
+-                raise SelectionError('save_required', '先保存一份有效配置，再生成交接包。', 409)
+-            if body.get('expected_revision') != saved['revision']:
+-                raise SelectionError('revision_conflict', '保存版本已变化，请恢复已保存配置后重试。', 409)
+-            return prepare_handoff(body.get('task'), saved['document']['selection'], catalog,
+-                                   self.store.directory / 'handoffs', saved['revision'])
++        return {**super().state(), 'csrf_token': self.token}
+ 
+ 
+ class PanelServer(ThreadingHTTPServer):
+--- a/panel/static/app.js
++++ b/panel/static/app.js
+@@ -15,6 +15,7 @@
+ }
+ 
+ async function request(path, body) {
++  if (window.fusionTransport) return window.fusionTransport.request(path, body);
+   const response = await fetch(path, body === undefined ? {cache: 'no-store'} : {
+     method: 'POST', headers: {'Content-Type': 'application/json', 'X-Fusion-Token': state.csrf_token},
+     body: JSON.stringify(body)
+@@ -70,7 +71,7 @@
+ async function load(mode = 'initial') {
+   busy = true; render();
+   try {
+-    const loaded = await request('/api/state');
++    const loaded = mode === 'initial' && window.fusionTransport ? await window.fusionTransport.initial() : await request('/api/state');
+     state = loaded;
+     if (!loaded.catalog) {notice(loaded.error?.message || '模型目录读取失败。', true); return;}
+     if (!draft || mode === 'restore') draft = clone(loaded.saved.document?.selection || loaded.default);
+@@ -79,7 +80,7 @@
+     if (draft && !valid()) notice('当前草稿包含目录不再支持的组合，请重新选择。', true);
+   } catch (error) {
+     state = {...(state || {}), catalog: null};
+-    notice('无法连接本地服务。请确认服务正在运行，再刷新目录。', true);
++    notice(window.fusionTransport ? error.message : '无法连接本地服务。请确认服务正在运行，再刷新目录。', true);
+   } finally {busy = false; render();}
+ }
+ 
+--- a/plugins/fusion-minimal/.codex-plugin/plugin.json
++++ b/plugins/fusion-minimal/.codex-plugin/plugin.json
+@@ -1,14 +1,18 @@
+ {
+   "name": "fusion-minimal",
+-  "version": "0.2.0",
++  "version": "0.3.0",
+   "description": "Configure coordinator and worker models, prepare bounded handoffs, and verify compact evidence without automatically starting tasks.",
+   "skills": "./skills/",
+   "interface": {
+     "displayName": "Fusion Minimal",
+     "shortDescription": "Plan, execute, verify",
+-    "longDescription": "Local model selection and evidence workflow. Saved settings apply to newly prepared Fusion handoffs. No model launcher, MCP server, or lifecycle hook is included.",
++    "longDescription": "Local MCP App and native structured settings share model selections with future Fusion task handoffs. No model launch, running-thread model switch, or Hooks.",
+     "developerName": "Local prototype",
+     "category": "Productivity",
+-    "defaultPrompt": "Use Fusion Minimal to prepare one bounded task and verify its evidence. Ask before any real dual-model run."
+-  }
++    "defaultPrompt": "Use Fusion Minimal to prepare one bounded task and verify its evidence. Ask before any real dual-model run.",
++    "capabilities": [
++      "Interactive"
++    ]
++  },
++  "mcpServers": "./.mcp.json"
+ }
+--- a/plugins/fusion-minimal/plugin.json
++++ b/plugins/fusion-minimal/plugin.json
+@@ -1,7 +1,7 @@
+ {
+   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+   "name": "fusion-minimal",
+-  "version": "0.2.0",
++  "version": "0.3.0",
+   "description": "Configure coordinator and worker models, prepare bounded handoffs, and verify compact evidence without automatically starting tasks.",
+   "author": {
+     "name": "Local prototype"
+@@ -11,10 +11,13 @@
+       "interface": {
+         "displayName": "Fusion Minimal",
+         "shortDescription": "Plan, execute, verify",
+-        "longDescription": "Local model selection and evidence workflow. Saved settings apply to newly prepared Fusion handoffs. No model launcher, MCP server, or lifecycle hook is included.",
++        "longDescription": "Local MCP App and native structured settings share model selections with future Fusion task handoffs. No model launch, running-thread model switch, or Hooks.",
+         "developerName": "Local prototype",
+         "category": "Productivity",
+-        "defaultPrompt": "Use Fusion Minimal to prepare one bounded task and verify its evidence. Ask before any real dual-model run."
++        "defaultPrompt": "Use Fusion Minimal to prepare one bounded task and verify its evidence. Ask before any real dual-model run.",
++        "capabilities": [
++          "Interactive"
++        ]
+       }
+     }
+   }
+--- a/plugins/fusion-minimal/skills/fusion/SKILL.md
++++ b/plugins/fusion-minimal/skills/fusion/SKILL.md
+@@ -11,7 +11,7 @@
+ The prototype is offline by default. Do not launch a worker merely because this
+ Skill was invoked. A real dual-model run requires explicit user approval naming
+ the worker model, reasoning effort, task scope, and maximum worker turns. Do not
+-enable Astra, silently substitute a model, or start a second reviewer model.
++enable an unapproved model, silently substitute a model, or start a second reviewer model.
+ Report installation, project trust, or configuration changes before requesting
+ their approval. Do not modify global settings or install/trust Hooks automatically.
+ 
+@@ -59,8 +59,14 @@
+ 
+ ## Saved model selection
+ 
+-The standalone local panel saves project-only `.fusion/selection.json`. It is not
+-a native model switch. Use `scripts/fusion.py prepare --selection <saved-json>
++The local panel, MCP App, and native structured settings share project-only
++`.fusion/selection.json`. None is a switch for a running thread. When the local
++MCP server is installed and connected, `fusion.open` opens the model desk;
++`fusion.settings_read` and `fusion.settings_update` serve native settings.
++`fusion.prepare` creates a snapshot and `fusion.execution_plan` returns a
++declarative adapter for a future coordinator and worker. No tool starts a model,
++sends a prompt, or grants launch permission. Do not pretend installed tools exist
++until discovery confirms them. Use `scripts/fusion.py prepare --selection <saved-json>
+ --task <task-json> --out <handoff-directory>` to validate the pair against the
+ current bundled CLI catalog and prepare an immutable handoff. Preparing does not
+ execute task commands, launch models, install configuration, or modify this thread.
+--- a/plugins/fusion-minimal/skills/fusion/scripts/fusion_selection.py
++++ b/plugins/fusion-minimal/skills/fusion/scripts/fusion_selection.py
+@@ -8,6 +8,7 @@
+ import subprocess
+ import tempfile
+ import threading
++import fcntl
+ from datetime import datetime, timezone
+ 
+ 
+@@ -49,8 +50,9 @@
+         if row.get("visibility") != "list":
+             continue
+         slug = row.get("slug", "")
+-        efforts = [r.get("effort") for r in row.get("supported_reasoning_levels", [])]
+-        if not re.fullmatch(r"[A-Za-z0-9._-]+", slug) or not efforts or any(
++        levels = row.get("supported_reasoning_levels", [])
++        efforts = [r.get("effort") for r in levels if isinstance(r, dict)] if isinstance(levels, list) else []
++        if not isinstance(slug, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", slug) or not efforts or any(
+                 not isinstance(e, str) or not re.fullmatch(r"[a-z_]+", e) for e in efforts):
+             continue
+         models.append({"id": slug, "name": row.get("display_name", slug),
+@@ -116,14 +118,47 @@
+     return path
+ 
+ 
++class StorageLock:
++    """Reentrant process lock: HTTP and stdio MCP may run concurrently."""
++    def __init__(self, directory):
++        self.directory = directory
++        self.thread_lock = threading.RLock()
++        self.depth = 0
++        self.fd = None
++
++    def __enter__(self):
++        self.thread_lock.acquire()
++        try:
++            if self.depth == 0:
++                safe_directory(self.directory)
++                self.fd = os.open(self.directory / '.selection.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
++                fcntl.flock(self.fd, fcntl.LOCK_EX)
++            self.depth += 1
++            return self
++        except BaseException:
++            if self.fd is not None:
++                os.close(self.fd)
++                self.fd = None
++            self.thread_lock.release()
++            raise
++
++    def __exit__(self, *args):
++        self.depth -= 1
++        if self.depth == 0:
++            fcntl.flock(self.fd, fcntl.LOCK_UN)
++            os.close(self.fd)
++            self.fd = None
++        self.thread_lock.release()
++
++
+ class SelectionStore:
+     def __init__(self, directory):
+         self.directory = Path(directory)
+         self.path = self.directory / 'selection.json'
+-        self.lock = threading.RLock()
++        self.lock = StorageLock(self.directory)
+ 
+     def read(self, catalog):
+-        if self.path.is_symlink():
++        if self.directory.is_symlink() or self.path.is_symlink():
+             raise SelectionError('unsafe_storage', '配置文件不能是符号链接。', 409)
+         try:
+             raw = self.path.read_bytes()
+--- a/tools/validate_static.py
++++ b/tools/validate_static.py
+@@ -56,8 +56,18 @@
+     entry = market["plugins"][0]
+     check((ROOT / entry["source"]["path"]).resolve() == PLUGIN, "marketplace source resolves")
+     check(not any(p.is_symlink() for p in PLUGIN.rglob("*")), "package has no symlinks")
+-    check(not any(p.name in ["mcp.json", ".mcp.json", "hooks.json", ".app.json"]
+-                  for p in PLUGIN.rglob("*")), "no MCP, Hooks, or app dependency")
++    check(not any(p.name in ["hooks.json", ".app.json"] for p in PLUGIN.rglob("*")),
++          "no Hooks or hosted app dependency")
++    mcp = json.loads((PLUGIN / 'mcp.json').read_text())['mcpServers']['fusion']
++    legacy = json.loads((PLUGIN / '.mcp.json').read_text())['mcpServers']['fusion']
++    check(mcp['type'] == 'stdio' and 'url' not in mcp, 'MCP uses local stdio without a network listener')
++    check({k: v for k, v in mcp.items() if k != 'type'} == legacy, 'MCP compatibility command synchronized')
++    check(overlay['mcpServers'] == './.mcp.json', 'compatibility MCP reference resolves')
++    check(mcp['args'] == ['-B', '${PLUGIN_ROOT}/mcp/server.py', '--project-root', '/Users/kola/codex-fusion'],
++          'MCP project storage fixed by deployment, not tool inputs')
++    check((PLUGIN / 'mcp/server.py').is_file() and (PLUGIN / 'ui/model-desk.html').is_file(),
++          'packaged MCP entrypoint and built view exist')
++    check('src="/app.js"' not in (PLUGIN / 'ui/model-desk.html').read_text(), 'MCP view is self contained')
+     baseline = json.loads((ROOT / "evidence/local-capabilities.json").read_text())
+     after = hashlib.sha256((Path.home() / '.codex/config.toml').read_bytes()).hexdigest()
+     check(after == baseline["global_config_sha256_before"], "global config hash unchanged")

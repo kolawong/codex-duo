@@ -1,0 +1,20 @@
+test_absolute_path (test_contract.ContractTest.test_absolute_path) ... ok
+test_blockers (test_contract.ContractTest.test_blockers) ... ok
+test_existing_demo_not_overwritten (test_contract.ContractTest.test_existing_demo_not_overwritten) ... ok
+test_failed_status (test_contract.ContractTest.test_failed_status) ... ok
+test_forged_boolean_exit (test_contract.ContractTest.test_forged_boolean_exit) ... ok
+test_hash_tampering (test_contract.ContractTest.test_hash_tampering) ... ok
+test_missing_tests (test_contract.ContractTest.test_missing_tests) ... ok
+test_nonzero_exit (test_contract.ContractTest.test_nonzero_exit) ... ok
+test_offline_red_then_green (test_contract.ContractTest.test_offline_red_then_green) ... ok
+test_oversized_summary (test_contract.ContractTest.test_oversized_summary) ... ok
+test_scope_escape (test_contract.ContractTest.test_scope_escape) ... ok
+test_symlink (test_contract.ContractTest.test_symlink) ... ok
+test_test_command_substitution (test_contract.ContractTest.test_test_command_substitution) ... ok
+test_traversal (test_contract.ContractTest.test_traversal) ... ok
+test_wrong_task (test_contract.ContractTest.test_wrong_task) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.141s
+
+OK
