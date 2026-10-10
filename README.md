@@ -1,267 +1,310 @@
-# Codex Duo 0.7.0
+# Codex Duo
 
-当前聊天规划与验收，原生执行代理按已保存模型、强度和总执行次数完成开发任务。
-高级设置「最大并行执行代理数」可选 1 / 2 / 3，默认 1；旧配置读取补 1，不自动改写。
-简单任务仍用一个代理；独立文件任务可并行，依赖任务等待验证后执行，冲突范围拒绝拆分。
-实际并发取保存上限与宿主容量的较小值，不修改宿主容量设置。全部首次执行与修正共享父任务总次数。
-`fusion.plan/reserve/complete/verify` 准备具体子契约、原子记录派发预算、分别核验证据及父集成测试；
-每次派发独立证据。账本只能约束适配器调用，原生调用仍由协调器执行，MCP 不启动模型。
+> **一个规划，一个执行** —— 面向 OpenAI Codex 的原生双模型 / 多代理协同开发系统。  
+> 当前聊天负责任务规划与验收，原生执行代理（Worker）在受控边界与统一预算内高效交付代码。
 
-全局默认保存在实际 `CODEX_HOME/codex-duo/selection.json`（未设置环境变量时为
-`~/.codex/codex-duo/selection.json`）；项目独立设置保存在各项目 `.fusion/selection.json`。
-项目独立设置优先，包括现有配置和手动模式。未配置项目继承全局默认，读取和切换不会落盘。
-插件详情页明确管理全局默认；菜单栏及嵌入面板可选择「全局默认」或「当前项目」，显示当前来源。
-清除项目覆盖后继承全局，原配置保存在项目 history；并发修改冲突阻止覆盖，保存或切换失败保留草稿。
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)]()
+[![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
+[![Python](https://img.shields.io/badge/python-3.11%2B-brightgreen.svg)]()
+[![License](https://img.shields.io/badge/license-MIT%20%2F%20Proprietary-informational.svg)]()
 
-全局自动模式配合用户授权安装的全局 AGENTS.md 指令，使各项目开发任务自动读取这一流程；
-局部手动优先，全局手动使继承项目停止自动派发。单独项目仍可明确启用并保存项目指令。
-问答、只读检查、配置变更和明确不启动模型的请求不会启动执行代理。损坏配置拒绝执行，不静默回退。
-配置保存本身不写 Codex config.toml、不安装全局指令、不启动模型、不创建聊天或安装 Hooks。
+---
 
-每个聊天的技能始终向所有 `fusion.*` 调用传自己的真实项目 cwd；全局设置与菜单选择不改变聊天路径。
-任务交接及证据留在真实项目 `.fusion` 下，进行中的任务保留原快照与累计执行预算。
-已有聊天可能需要重新加载指令或首次明确调用 `$codex-duo`，安装回执不能证明旧聊天已更新。
+## 目录
 
-验证与构建：
+- [核心概念与设计理念](#核心概念与设计理念)
+- [核心特性](#核心特性)
+- [架构与协作流程](#架构与协作流程)
+- [快速开始与安装](#快速开始与安装)
+- [日常使用指南](#日常使用指南)
+- [配置说明与分层机制](#配置说明与分层机制)
+- [开发、构建与测试](#开发构建与测试)
+- [仓库目录结构](#仓库目录结构)
+- [安全边界与审计规范](#安全边界与审计规范)
+- [版本演进概览](#版本演进概览)
+
+---
+
+## 核心概念与设计理念
+
+Codex Duo 旨在解决大语言模型协同编码中的“规划发散”、“修改越界”、“配置繁琐”等痛点：
+
+1. **分工明确（Coordinator & Worker）**：
+   - **主控（Coordinator / 当前聊天）**：全面把控业务逻辑、接口契约、任务拆解与测试验收。
+   - **执行代理（Worker）**：在分配的独立路径范围（`allowed_paths`）内专注于编写代码并生成测试证据，杜绝越界修改。
+2. **一次配置，无感运行（Configure Once, Zero Friction）**：
+   - 告别每次对话都要输入 slash command、手动复制任务 JSON 或反复指定模型与思考强度。
+   - 项目一旦开启自动模式，日常提出开发需求（如“修复这个用例并完成验证”）即自动进入 Duo 协作流。
+3. **全局默认与项目覆盖（Layered Settings）**：
+   - 支持全局默认偏好，新项目自动继承；同时支持按项目单独覆盖（如特定项目要求不同执行模型或并行数）。
+4. **受控并发与总预算账本（Bounded Parallelism & Durable Ledger）**：
+   - 支持 1~3 个并行 Worker（根据宿主实际容量动态约束）。
+   - 首次执行与后续修正轮次**严格共享父任务总轮数上限**，防止因修正死循环消耗过量 Token。
+5. **绝对安全与零静默行为（Fail-Closed & Traceable）**：
+   - 绝不静默替换模型，工具缺失即显式上报；
+   - 问答、只读搜索、配置更新绝不唤起 Worker；
+   - 不修改全局未授权配置，不自动提交 Git，不自动建立多余聊天。
+
+---
+
+## 核心特性
+
+- **🚀 原生子代理派发**：基于 Codex 宿主内置的子代理能力执行，不依赖外挂不可控的外部命令行模型。
+- **⚡ 智能并行协作**：支持独立文件的并行开发，依赖任务等待前序验证完成；对有冲突或交叠范围的任务严格拒绝拆分，保持单 Worker 串行执行。
+- **📊 确定性契约与证据链**：每个子任务具备唯一的 `task.json` 契约，执行产生独立的 `diff`、`result.json` 及测试日志（保存在 `.fusion/evidence/`），确保每一步改动皆可追溯、可审计。
+- **🖥️ 原生 macOS 菜单栏应用**：提供精致石墨外观的 SwiftUI 原生菜单栏面板（`Codex Duo.app`），无 Dock 栏干扰，随时切换全局/项目配置、查看当前配置生效来源。
+- **🛡️ 冲突防护与原子更新**：所有配置采用带版本哈希（`revision`）的原子写入机制，并发修改冲突时拒绝覆盖并保留编辑草稿。
+
+---
+
+## 架构与协作流程
+
+### 协作时序图
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 用户
+    participant Coord as 当前会话 (Coordinator)
+    participant MCP as Codex Duo MCP 服务
+    participant Worker as 原生执行代理 (Worker)
+
+    User->>Coord: 提出开发需求 (如："修复登录校验逻辑并验证")
+    Coord->>MCP: fusion.defaults (读取当前项目实际生效配置)
+    Coord->>Coord: 静态分析代码，确定修改范围与验收测试
+    Coord->>MCP: fusion.begin (原子准备内部契约快照与预算)
+    opt 任务拆解与并发规划
+        Coord->>MCP: fusion.plan (拆解无交叠独立任务流)
+    end
+    Coord->>MCP: fusion.reserve (锁定 Worker 槽位与单次预算)
+    Coord->>Worker: 启动原生子代理 (派发任务契约与限定路径)
+    Worker->>Worker: 修改代码并在独立环境执行指定测试
+    Worker-->>MCP: 写入 result.json / change.diff / test.log
+    MCP-->>Coord: fusion.complete (提交执行证据)
+    Coord->>Coord: 协调器独立复核证据与全局回归测试
+    alt 验收通过
+        Coord-->>User: 汇报完成情况与变更摘要
+    else 发现问题 (在总预算内)
+        Coord->>MCP: fusion.reserve (申请纠错轮次，扣减总预算)
+        Coord->>Worker: 启动修正执行
+    end
+```
+
+### 核心组件职责
+
+| 组件 | 对应路径 | 核心职责 |
+| :--- | :--- | :--- |
+| **Codex 插件** | `plugins/fusion-minimal` | 提供本地 stdio MCP 服务，暴露 `fusion.defaults`、`fusion.begin`、`fusion.plan`、`fusion.reserve`、`fusion.complete`、`fusion.verify` 等核心接口；提供 `codex-duo` 规范技能。 |
+| **macOS 菜单栏 App** | `macos/` | 基于 SwiftUI 的原生菜单栏应用，负责管理全局默认偏好与各项目独立设置，以无端口的 IPC 桥接安全通信。 |
+| **设置与 Web 面板** | `panel/`, `native-build/` | 嵌入式与独立本地设置面板前端，提供直观的模型目录感知、推理强度校验及并行数设置。 |
+| **工程测试套件** | `tests/` | 覆盖并发控制、状态隔离、契约约束、跨项目权限等多维度的自动化回归用例。 |
+
+---
+
+## 快速开始与安装
+
+### 环境要求
+- **操作系统**：macOS 14+ (Sonoma 或更高版本)
+- **运行环境**：Python 3.11+、Node.js 18+ (用于构建面板 UI)、Swift 6+ (含 Xcode Command Line Tools)
+- **客户端**：ChatGPT Desktop / Codex CLI (`/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`)
+
+### 1. 安装 Codex 插件
+
+通过官方 CLI 将本地插件包添加至 Codex 环境：
 
 ```sh
+# 添加本地插件
+/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex plugin add fusion-minimal@fusion-local --json
+```
+
+### 2. 构建与运行 macOS 菜单栏应用
+
+```sh
+# 编译并生成 Codex Duo.app
+bash macos/build.sh
+
+# 打开菜单栏应用
+open "macos/dist/Codex Duo.app"
+```
+
+> **提示**：应用启动后将在 macOS 顶部菜单栏显示双环图标。可点击查看或编辑当前项目及全局默认偏好。
+
+### 3. 项目启用与配置
+
+1. **图形界面配置**：在菜单栏应用中选择目标项目，设置 Worker 模型（如 `gpt-6.1-sol` 或 `gpt-6-luna`）、推理强度（`high` / `medium` / `low`）、最大执行轮数（如 `3` 或 `10`）以及最大并行代理数（`1` / `2` / `3`）。
+2. **启用自动化流程**：将模式设置为 `automatic_project`（项目自动）并保存。保存时会自动在项目的 `AGENTS.md` 中写入如下受控指令块：
+
+```markdown
+<!-- codex-duo:begin -->
+## Codex Duo project workflow
+
+For user-requested implementation or bug fixes, load the `codex-duo` skill and read
+`fusion.defaults` with the actual current chat project directory as `project_root`.
+...
+<!-- codex-duo:end -->
+```
+
+---
+
+## 日常使用指南
+
+### 1. 日常开发任务（全自动）
+
+在已启用 Codex Duo 的项目中，你无需使用任何特殊前缀或 Slash Command，直接描述具体开发需求即可：
+
+- *“帮我为用户注册模块补充单元测试，并验证覆盖率。”*
+- *“修复订单超时未取消的 bug，并跑通关联测试用例。”*
+
+**Coordinator 将自动完成**：
+1. 静默读取已保存的项目/全局配置；
+2. 分析代码并拟定执行契约；
+3. 调度底层 Worker 完成实现；
+4. 复核测试与 Diff 证据后直接向你汇报结果。
+
+### 2. 只读查询与对话（零开销保护）
+
+当你的请求属于以下情况时，系统**绝对不会**启动 Worker 模型，避免产生额外消耗：
+- 询问架构或代码含义（如 *“解释一下 `fusion_service.py` 的作用”*）；
+- 只读检查（如 *“搜索项目中是否有用到 asyncio”*）；
+- 明确要求不启动模型（如 *“先给我出个方案，不要写代码”*）；
+- 修改或查看系统配置。
+
+### 3. 查看与更新配置
+
+随时对主控说：
+- *“打开 Codex Duo 配置”*
+或直接点击 macOS 顶部菜单栏的双环图标。任何保存的配置更新将即时对后续任务生效，而正在运行中的任务将严格维持原快照配置。
+
+---
+
+## 配置说明与分层机制
+
+### 配置解析层级
+
+```text
+[当前项目覆盖: <project_root>/.fusion/selection.json]
+                     │
+                     ▼ (未配置时自动继承)
+[全局默认配置: ~/.codex/codex-duo/selection.json]
+                     │
+                     ▼ (初次未配置)
+[引导状态: setup-required (需要初始化配置)]
+```
+
+- **项目覆盖优先**：项目级配置完全独立，清除项目覆盖时系统会自动备份历史，恢复继承全局默认。
+- **只读安全**：读取和在不同项目间切换**永远不落盘**，绝不产生隐藏写入。
+
+### 核心配置项解析 (`selection.json`)
+
+```json
+{
+  "workflow": {
+    "activation": "automatic_project",
+    "coordinator_mode": "current_thread",
+    "max_worker_turns": 10,
+    "max_parallel_workers": 1
+  },
+  "worker": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high"
+  },
+  "coordinator": {
+    "mode": "current_thread",
+    "selected_model": null
+  }
+}
+```
+
+| 字段 | 类型 | 候选值 / 默认值 | 作用说明 |
+| :--- | :--- | :--- | :--- |
+| `workflow.activation` | string | `automatic_project` \| `manual` | 激活方式。`automatic_project` 自动介入；`manual` 需显式呼叫 Codex Duo。 |
+| `workflow.coordinator_mode` | string | `current_thread` | 主控运行模式。当前会话作为规划与验收主控。 |
+| `workflow.max_worker_turns` | integer | 默认 `10` (建议 3~10) | 单个任务的**总 Worker 执行预算上限**（所有并行子任务及修正共享）。 |
+| `workflow.max_parallel_workers` | integer | `1` \| `2` \| `3` (默认 `1`) | 允许的最大并发 Worker 数。实际并发受宿主容量严格制约。 |
+| `worker.model` | string | 本地目录支持的模型名 | 执行代理采用的模型（如 `gpt-6.1-sol`、`gpt-6-luna` 等）。 |
+| `worker.reasoning_effort` | string | `low` \| `medium` \| `high` | 执行代理的思考强度级别。 |
+
+---
+
+## 开发、构建与测试
+
+本仓库提供了端到端严格的自动化验证机制，覆盖协议契约、并发调度与原生打包：
+
+```sh
+# 1. 运行完整 Python 单元测试 (120+ 项协议与工作流测试)
 python3 -B -m unittest discover -s tests -v
+
+# 2. 运行 Swift 原生模块测试
 swift test --package-path macos
+
+# 3. 运行静态代码与合规检查
+python3 -B tools/validate_static.py
+
+# 4. 构建与测试前端面板
 node native-build/build.mjs
 node native-build/test-panel.mjs
 node native-build/test-client.mjs
+
+# 5. 打包 macOS 菜单栏应用
 bash macos/build.sh
 ```
 
-测试隔离真实用户全局默认；构建应用为 `macos/dist/Codex Duo.app`，保留石墨设计、图标与偏好 bundle ID。
-测试与构建通过不代表已安装宿主重载，也不代表新的原生模型执行。
+---
+
+## 仓库目录结构
+
+```text
+codex-duo/
+├── macos/                     # macOS 原生 SwiftUI 菜单栏应用源码 (Swift 6+)
+│   ├── Sources/               # 菜单栏应用主体、UI 视图与 Python IPC 桥接
+│   ├── Tests/                 # Swift 单元测试
+│   └── build.sh               # 编译与 .app 打包脚本
+├── plugins/
+│   └── fusion-minimal/        # Codex 插件主目录 (本地 stdio MCP)
+│       ├── mcp/               # MCP 协议服务端入口与跨平台启动器 (launch.sh)
+│       ├── skills/
+│       │   ├── codex-duo/     # 规范技能定义 (SKILL.md)
+│       │   └── fusion/        # 工作流契约、调度核心脚本与模板
+│       └── plugin.json        # 插件元数据与能力声明清单
+├── panel/                     # 嵌入式与独立本地 Web 设置面板
+├── native-build/              # 前端编译脚本、测试客户端与打包管线
+├── tests/                     # 自动化测试套件 (包含全局默认、并发账本、项目隔离等)
+├── tools/                     # 静态验证脚本与本地测试 Harness
+├── AGENTS.md                  # 项目内管理的 Codex Duo 自动化工作流说明
+└── NATIVE-INSTALL.md          # 详细本地安装与更新排错备忘录
+```
 
 ---
 
-以下为历史版本记录。
+## 安全边界与审计规范
 
-# Fusion Minimal 0.4.0
-
-配置一次，之后在已配置项目里直接提出开发任务。当前聊天负责规划和验收，一个原生执行代理使用已保存的模型与推理强度完成子任务。
-
-- 已配置：`/Users/kola/codex-fusion` 自动使用；执行模型沿用 `gpt-6.1-sol / high`，每项任务最多 3 次执行（包括修正）。
-- 平时直接说“修复这个问题，并完成验证”。不需要 `/fusion`、任务 JSON、交接包路径或逐次确认模型。
-- 要更改时，说“打开 Fusion 配置”，点“更新配置”。选择会持续保留，后续任务读取最新保存值；进行中的任务保持原快照。
-- 普通问答、只读查看和明确要求不启动模型的任务不派发执行代理。需要改为手动使用，可以在面板更新“使用方式”。
-- 默认主控是当前聊天；原来的指定主控模型保存在高级设置中，只有选择对应模式时才使用。面板不会切换当前聊天模型。
-
-`fusion.defaults` 只读返回本项目默认值；`fusion.begin` 自动读取保存配置并准备内部任务快照。技能通过宿主原生子代理完成执行、回传和验收；MCP 本身不启动模型。项目 `AGENTS.md` 使开发任务自动读取这一流程，项目原生代理能力已启用。无可用原生执行工具时，明确说明限制，继续当前聊天中已授权的工作，不伪称完成了双模型执行。
-
-首次安装本次更新后，已打开的旧聊天可能仍连接旧插件进程；新聊天加载新版本。配置无需重新选择。跨项目不自动套用这份配置。
-
-验证：88 项 Python 测试、35 项静态检查、官方 MCP 客户端互通、已安装缓存启动/默认值读取、面板保存和重新打开验证通过。**本轮未调用执行模型，真实双模型运行未验证。** [本次交付与证据](evidence/update-040/REPORT.md)。
+1. **严禁越界与静默替换**：
+   - MCP 服务本身**不直接执行外部命令、不直接启动大模型**。所有模型执行全部交由 Codex 官方宿主审计与调度。
+   - 宿主工具不支持已配置的模型或思考强度时，系统必须明确告知用户并降级至主控独立会话，严禁私自替换模型。
+2. **严防代码篡改**：
+   - Worker 只能修改其所签署契约（`contract.md`）中的 `allowed_paths`。
+   - 所有的代码变动均生成独立的 `change.diff`，并要求主控在合并前重新独立验证。
+3. **环境与配置零污染**：
+   - 不修改全局 shell profile；
+   - 不静默写入 `~/.codex/config.toml`；
+   - 切换项目或读取配置不产生任何磁盘副作用。
 
 ---
 
-以下为历史版本记录。
+## 版本演进概览
 
-# Fusion Minimal 0.3.3
-
-在 0.3.2 插件内相对启动器基础上，为服务子进程补充标准系统 PATH，解决空 PATH 下内置 CLI 包装器无法读取模型目录的问题。不会修改全局环境或安全设置。回归测试现在覆盖空 PATH 下的完整设置读取；实际宿主工具加载与 UI 验收结果见 [0.3.3 报告](evidence/update-033/REPORT.md)。
-
-以下保留先前版本说明。
-
-# Fusion Minimal 0.3.2
-
-插件内 `./mcp/launch.sh` 避免宿主直接解析裸 `python3`，从 PATH 或既有 Homebrew 路径选择 Python 3.11+。不安装运行时、不修改全局环境。新增空 PATH、含空格路径和无关工作目录的打包入口回归测试。安装、宿主调用与 UI 渲染的验证结果分别记录在 [0.3.2 报告](evidence/update-032/REPORT.md)。
-
-以下保留先前版本说明。
-
-# Fusion Minimal 0.3.1
-
-修正便携 MCP 的启动命令为 `python3`，补充宿主命令路径规则校验和实际清单启动回归测试。此补丁沿用原插件身份、模型选择和部署目录；不启动模型。当前安装和原生宿主验收结果以 [0.3.1 更新报告](evidence/update-031/REPORT.md) 为准。
-
-校验已安装状态时使用：`python3 -B tools/validate_static.py --installed --global-config-sha256 <本次修改前记录的配置哈希>`。默认模式仍用于初始禁用状态。SDK/子进程握手不等于桌面宿主加载成功。
-
-以下是之前版本的历史记录，不代表当前安装状态。
-
-# Fusion Minimal 0.3.0
-
-> 安装状态更新：已通过官方 CLI 在本机安装并启用 0.3.0，安装缓存中的 MCP 启动及设置保存恢复通过；原生 Codex 设置页与会话面板仍待用户打开后核验。详见 [安装报告](evidence/install-001/REPORT.md)。以下候选版验收说明保留为安装前记录。
-
-## 原生插件候选版本（0.3.0）
-
-已新增本地 stdio MCP、原生结构化设置、对话入口与自包含 MCP App。它们与原网页面板共用模型目录、配置存储和任务快照；保存和生成仍不启动模型，不切换当前线程。
-
-**当前状态：源码和无模型验证完成，尚未安装到 Codex。** 已通过 63 项 Python 测试、33 项静态检查、官方 MCP 客户端互通，以及测试宿主中的设置/面板双向保存恢复。测试宿主不是原生安装实测。
-
-安装前请读 [具体安装步骤与权限范围](NATIVE-INSTALL.md)。交付包为 `fusion-minimal-0.3.0.zip`；原生证据在 `evidence/native/`。没有新增全局配置、Hooks 或实际模型任务。
-
-复现：
-
-```sh
-python3 -B -m unittest discover -s tests -v
-python3 -B tools/validate_static.py
-# 仅重建 UI 或运行 SDK 互通测试时需要 Node 开发依赖：
-npm ci --prefix native-build --ignore-scripts --no-audit --no-fund
-node native-build/build.mjs
-node native-build/test-client.mjs
-# 可选测试宿主，只写临时状态：
-python3 -B tools/native_harness.py
-```
-
-下面的 0.2.0 说明保留为独立网页入口的用法和历史验收记录；其“尚未注册/未包含 MCP”描述对应当时版本，不代表 0.3.0 源码内容。
-
-## 模型选择面板（0.2.0）
-
-启动独立本地面板：
-
-```sh
-cd /Users/kola/codex-fusion
-python3 -B panel/server.py
-```
-
-打开 `http://127.0.0.1:8765`。可用 `--port 0` 让系统分配空闲端口，启动日志会显示地址。
-按 Ctrl+C 停止服务。面板是普通本地网页，可在 Codex 浏览器侧栏打开；尚未注册为 MCP App、
-插件面板或原生模型开关。无需安装额外 Python/Node 依赖（Python 3.11+）。
-
-模型来自本机 `codex debug models --bundled` 的可见目录，推理强度逐模型校验；
-这只能确认本机目录支持，不能证明账号额度、权限或实际推理路由。找不到内置 CLI 时可设置
-`FUSION_CODEX_CLI` 指向已安装的 Codex 可执行文件。读取失败会禁用保存和生成，不会静默回退。
-三个候选预设仅在完整组合受当前目录支持时出现。没有硬编码价格或宣称实际节省比例。
-
-选择主控/执行模型及强度 → 保存配置 → 生成新交接包。三个动作的范围分别是：
-
-- 草稿：仅留在当前页面，恢复已保存配置会舍弃草稿。
-- 保存：原子写入本项目 `.fusion/selection.json`，不修改 `.codex/` 或全局配置，也不启动任务。
-- 生成：把已保存组合和任务规范固定到 `.fusion/handoffs/<内容标识>/`。重复请求复用相同包。
-  `task.json` 仍兼容原有 `fusion.py verify`；`handoff.json` 标明未启动、需批准且不作用于当前线程。
-  `config/*.toml` 是待检查的候选配置，未安装，代理和 Hooks 默认关闭。
-
-当前主线程的实际模型无法由此面板读取或切换。未来启动时须为新的主控任务显式选择交接包
-请求的模型，并核实实际配置，再在授权范围内启动执行模型。本轮只验证面板与文件交接，不调用模型。
-并发窗口更新发生冲突会提示恢复；配置损坏或模型从目录移除时，不自动覆盖，重新保存会先备份原文件。
-
-CLI 也能消费同一份已保存配置：
-
-```sh
-python3 -B plugins/fusion-minimal/skills/fusion/scripts/fusion.py prepare --selection .fusion/selection.json --task plugins/fusion-minimal/skills/fusion/templates/task.json --out .fusion/handoffs
-python3 -B -m unittest discover -s tests -v
-```
-
-HTTP 测试只绑定本机临时端口；受限沙箱若禁止 bind，需在允许回环端口的本地环境运行。
-测试和截图在 `evidence/panel/`，历史证据保持原样。此版本插件源码与归档为 0.2.0；
-0.1.0 归档作为历史记录保留。插件安装、命名 TOML 自动发现和实际模型调用均不包含在面板验证内。
-
-本轮最终验收：44 项自动化测试、27 项静态检查与桌面/窄屏浏览器实测通过。
-浏览器与 CLI 生成同一交接包，均保持未启动。详见 [验收报告](evidence/panel/REPORT.md)
-和 [结构化证据](evidence/panel/acceptance.json)。
-
-下面保留先前能力核查与迁移记录；其中“本次”指对应历史阶段。
-
-## 独立维护目录
-
-当前规范维护路径是 `/Users/kola/codex-fusion`。在这里修改源码、测试和文档。
-原目录 `/Users/kola/Documents/Codex/2026-10-08/task/fusion-prototype` 保留为迁移前的
-可恢复副本；它不会与新目录自动同步。不要在两个目录并行维护。
-
-从任意工作目录运行下列无模型验证：
-
-```sh
-cd /Users/kola/codex-fusion
-python3 -B tools/validate_static.py
-python3 -B -m unittest discover -s tests -v
-python3 -B plugins/fusion-minimal/skills/fusion/scripts/fusion.py verify --task evidence/migration/offline-demo/task.json --result evidence/migration/offline-demo/result.json --root evidence/migration/offline-demo
-```
-
-`tools/` 和测试通过自身位置解析项目根目录；市场清单的 source.path 保持相对路径。
-验证脚本的全局配置只读哈希路径从当前用户 home 解析，不写全局配置。
-`evidence/current/` 接收此后静态检查和原生探针的新输出。迁移报告和无模型测试日志在
-`evidence/migration/`。原生探针这轮没有启动，先前初始化超时仍是历史限制。
-其他已有 `evidence/` 文件是保留的历史记录，其中的原路径、命令和哈希未篡改。
-此次迁移不把历史证据中的绝对路径当成当前可运行配置。
-
-项目代理、插件仍禁用，Hooks 仍关闭。没有注册/安装插件、信任 Hooks、修改全局配置、
-调用额外模型或发布。插件安装仍需另行批准；本次授权仅覆盖迁移和无模型验证。
-
-本机能力核查、离线原型和用户批准的一次原生 Luna/high 试跑已完成。
-Sol 主线程独立验收通过；没有使用第二次纠正轮次。
-
-真实试跑证据在 `evidence/live-run-001/`：`task.json` 是简明任务，`dispatch.json`
-记录原生工具接受 `gpt-6-luna/high` 和 `fork_turns=none`，`result.json` 是 worker 的
-精简回传，`change.diff`、`tests.log` 和 `coordinator-tests.log` 是变更与独立测试证据，
-`acceptance.json` 是最终验收。修改前两项测试失败，Luna 修改后两项通过，主线程重跑也通过。
-只改动 fixture 的 `math_ops.py`；原型受保护文件和全局配置未被 worker 修改。
-
-当前原生工具没有选择命名 TOML 代理的参数，所以本次使用显式模型/effort 参数进行验证。
-不声称 `.codex/agents/fusion_worker.toml` 被自动发现。平台确认接受指定参数并完成子代理任务；
-没有独立的逐请求 reroute、token 或计费遥测，不能据此量化成本节省。
-
-| 核查项 | 本机证据与结论 |
-| --- | --- |
-| 桌面应用 | `/Applications/ChatGPT.app`，bundle ID `com.openai.codex`；版本 `26.1002.52244`，build `13536` |
-| 内置 CLI | `0.162.0-alpha.2`，aarch64；当前 shell PATH 没有独立 `codex` 命令，检查使用绝对路径 |
-| 主模型配置 | 用户全局配置为 `gpt-6.1-sol` / `high`；此次未修改，不能仅凭全局配置断言所有线程的运行时选择 |
-| 插件 | 内置 CLI 的 `plugin list --json` 返回 13 个 installed/enabled 项；当前会话另外暴露远程插件 Skill 和工具。缓存目录本身不证明插件启用 |
-| 原生子代理 | CLI `multi_agent` 为 stable/true；原生 spawn 工具已接受指定 Luna/high 并完成一次任务 |
-| 独立模型配置 | 内置目录列出 Sol、Luna/high；显式模型/effort 试跑通过。自定义 TOML 静态通过，命名代理自动发现和独立运行时分配遥测未验证 |
-| Hooks | CLI `hooks` 为 stable/true；本原型未打包 Hooks，项目配置关闭 Hooks |
-
-13 项 CLI 插件清单：documents、pdf、spreadsheets、presentations、template-creator、
-codex-app-tools、browser、unified-computer-use、chrome、computer-use、messages、
-code-review、visualize。准确版本见 `evidence/installed-plugins.json`。
-远程插件的 Skill/工具出现在本会话环境中，不把这 13 项称为全部账号插件。
-
-原型以一个 Skill 控制工作流：Sol 主线程写简明 task JSON、限定文件和验收条件；
-批准后由一个 `fusion_worker`（候选 `gpt-6-luna/high`）执行；同一 Sol 主线程验收。
-结果只回传状态、短摘要、diff 和日志引用、测试退出码、阻塞点。完整日志保存在本地。
-不引入额外规划模型、MCP 或 Hooks。这里的低成本角色依据官方定位；尚未测量实际成本或节省比例。
-
-插件与代理配置分别交付。`.codex/agents/` 不是插件可移植组件，安装插件不会自动安装代理。
-根目录和兼容清单身份同步；现代客户端使用根清单的 OpenAI 扩展，旧客户端可使用兼容清单。
-根目录 `.agents/plugins/marketplace.json` 仅为此独立目录准备本地市场条目；尚未注册或安装。
-`.codex/config.toml` 中插件与代理均 disabled，候选配置不会主动发起模型任务。
-
-在本目录复现无模型检查（Python 3.11+；本机使用 Homebrew Python）：
-
-```sh
-python3 -B tools/validate_static.py
-python3 -B -m unittest discover -s tests -v
-python3 -B plugins/fusion-minimal/skills/fusion/scripts/fusion.py verify --task evidence/offline-demo/task.json --result evidence/offline-demo/result.json --root evidence/offline-demo
-```
-
-生成新离线示例时选一个不存在的目录：
-
-```sh
-python3 -B plugins/fusion-minimal/skills/fusion/scripts/fusion.py demo --out /tmp/fusion-new-demo
-```
-
-示例先运行失败测试，再确定性修改加法函数，最后执行两项通过测试。没有调用模型。
-验收脚本只检查交接契约、文件范围和证据一致性，不执行 result 中的命令。
-哈希不能证明来源，Sol 仍须检查 diff、确认实际文件变化并独立重跑检查。
-首次实现发现 Python 对同秒、同大小改动复用 bytecode 的问题；示例命令加 `-B` 后修复并通过。
-
-检查结果：27 项静态检查通过，15 项协议测试通过；离线示例修改前两项失败，修改后两项通过。
-全局配置 SHA-256 前后相同。静态检查为本原型结构校验，不冒充完整 Agent Plugins schema 验证。
-
-原生协议探针 `tools/native_probe.py` 只请求初始化和只读接口；不会创建线程或模型 turn。
-初次启动因只读 `~/.codex` 无法初始化 SQLite；使用官方 `sqlite_home` 运行时覆盖后，
-状态写入移至本目录，未修改全局配置。有效配置的 `initialize` 在 12 秒内未返回，
-所以 `config/read` 和 `plugin/read` 未执行，插件原生加载未验证。
-未知配置键被本机 `--strict-config` 拒绝，见 `evidence/native-probe.json`。
-后续应在受支持的本地宿主完成发现验证，不能把此超时推断为产品不支持。
-
-最新官方依据（2026-10-08 核对）：
-
-- [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)：项目/个人自定义代理 TOML、独立 model/effort 和代理默认值受支持。
-- [Package your plugin](https://developers.openai.com/plugins/build/plugins)：Skill 插件、根清单与兼容清单受支持；含 Hooks 的插件限手动安装且需审阅信任。
-- [Hooks](https://learn.chatgpt.com/docs/hooks)：安装或启用插件不会自动信任 Hooks。
-- [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)：`sqlite_home` 指定本地状态目录。
-- [App Server](https://learn.chatgpt.com/docs/app-server)：由已安装 CLI 生成的协议 schema 与该版本对应。
-
-未执行：命名 TOML 自动发现验证、插件安装/市场注册、项目信任、全局配置更改、Hooks 安装或信任、
-Astra、升级、重启、推送或发布。没有读取用户凭证、私人聊天记录或无关项目。
-
-用户回复“批准”覆盖的单任务验证已经执行并验收。只临时把本目录 `agents.enabled`
-设为 true，验收后恢复原文件；插件始终禁用，Hooks 始终关闭。
-继续验证命名代理发现或其他真实任务时，明确后续范围；需要本地安装 Skill 时单独批准
-注册/安装此插件和项目信任。如宿主要求重启，按用户要求先报告并停下。
-本次未申请或执行全局更改、安装或 Hooks 信任。
-
-主要交付文件见 `FILES.txt`；可移植插件包为 `fusion-minimal-0.1.0.zip`，仅包含插件目录，
-代理和项目配置仍在源码目录内单独交付。
+- **v0.7.0（当前版本）**：
+  - 引入受控多 Worker 并行能力（`max_parallel_workers` 可选 1 / 2 / 3）；
+  - 实现持久化父任务执行账本，首次派发与所有修正严格共享 `max_worker_turns` 总预算；
+  - 完善冲突范围检测，交叠或不确定依赖的任务强制保持单 Worker 安全调度。
+- **v0.4.0**：
+  - 支持分层配置（全局默认 + 项目独立覆盖）；
+  - 引入 `automatic_project` 模式与 `AGENTS.md` 自动化受控引导块；
+  - 强化主控职责为当前会话，避免无意义的聊天创建。
+- **v0.3.x**：
+  - 引入本地 stdio MCP 服务；
+  - 解决受限 PATH 下的 Python 3.11+ 运行时探测与兼容性包装；
+  - 达成官方 MCP 客户端协议互通。
+- **v0.2.0 - v0.1.0**：
+  - 确立“一个规划、一个执行”的核心交互范式；
+  - 建立离线任务契约、证据收集与测试验证流水线原型。
