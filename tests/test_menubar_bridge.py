@@ -22,6 +22,7 @@ bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
 sys.path.insert(0, str(ROOT / 'plugins/fusion-minimal/skills/fusion/scripts'))
 from fusion_service import FusionService
+from fusion_selection import saved_workflow
 from fusion_selection import normalize_catalog, default_selection
 
 
@@ -81,7 +82,7 @@ class MenuBarBridgeTests(unittest.TestCase):
         self.assertEqual(0, code)
         saved = self.service.state()['saved']
         self.assertEqual(response['data']['revision'], saved['revision'])
-        self.assertEqual(self.workflow, saved['document']['workflow'])
+        self.assertEqual(saved_workflow({'workflow': self.workflow}), saved['document']['workflow'])
         self.selection['worker']['reasoning_effort'] = 'low'
         second = self.service.save(self.body(saved['revision']))
         _, response = self.invoke({'operation': 'state'})

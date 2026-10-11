@@ -14,7 +14,12 @@ try {
  const args=config.args.map(x=>x.replaceAll('${PLUGIN_ROOT}',pluginRoot));
  args[args.indexOf('--project-root')+1]=temp;
  await client.connect(new StdioClientTransport({command:config.command,args,cwd:pluginRoot,env:{...process.env,CODEX_HOME:path.join(temp,'codex-home')}}));
- const tools=await client.listTools();assert.equal(tools.tools.length,14);
+ const tools=await client.listTools();assert.equal(tools.tools.length,18);
+ const plannerTool=tools.tools.find(tool=>tool.name==='fusion.planner_reserve');
+ assert.ok(plannerTool.inputSchema.required.includes('host_capabilities'));
+ assert.equal(plannerTool.annotations.idempotentHint,false);
+ const plannerMissingRoot=await client.callTool({name:'fusion.planner_status',arguments:{plan_id:'a'.repeat(24)}});
+ assert.equal(plannerMissingRoot.isError,true);
  const res=await client.readResource({uri:'ui://fusion-minimal/model-desk-v4'});
  assert.equal(res.contents[0].mimeType,'text/html;profile=mcp-app');
  const settings=await client.callTool({name:'fusion.settings_read',arguments:{}});

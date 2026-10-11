@@ -5,17 +5,19 @@ PROJECT_ROOT="$(cd "$MACOS_DIR/.." && pwd)"
 APP="$MACOS_DIR/dist/Codex Duo.app"
 swift build --package-path "$MACOS_DIR" -c release
 BIN_DIR="$(swift build --package-path "$MACOS_DIR" -c release --show-bin-path)"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/fusion/scripts" "$APP/Contents/Resources/fusion/templates"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/fusion/scripts" "$APP/Contents/Resources/fusion/templates" "$APP/Contents/Resources/fusion/references"
 cp "$BIN_DIR/FusionMenu" "$APP/Contents/MacOS/FusionMenu"
 cp "$MACOS_DIR/Sources/FusionMenu/Resources/bridge.py" "$APP/Contents/Resources/bridge.py"
 rm -rf "$APP/Contents/Resources/Brand"
 cp -R "$MACOS_DIR/Sources/FusionMenu/Resources/Brand" "$APP/Contents/Resources/Brand"
 # Regenerate from Brand/AppIcon.svg with rsvg-convert + iconutil when the artwork changes.
 cp "$MACOS_DIR/Assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-for name in fusion.py fusion_selection.py fusion_service.py fusion_projects.py fusion_defaults.py fusion_parallel.py; do
+for name in fusion.py fusion_selection.py fusion_service.py fusion_projects.py fusion_defaults.py fusion_parallel.py fusion_planner.py; do
     cp "$PROJECT_ROOT/plugins/fusion-minimal/skills/fusion/scripts/$name" "$APP/Contents/Resources/fusion/scripts/$name"
 done
 cp "$PROJECT_ROOT/plugins/fusion-minimal/skills/fusion/templates/task.json" "$APP/Contents/Resources/fusion/templates/task.json"
+cp "$PROJECT_ROOT/plugins/fusion-minimal/skills/fusion/templates/fusion_planner.toml" "$APP/Contents/Resources/fusion/templates/fusion_planner.toml"
+cp "$PROJECT_ROOT/plugins/fusion-minimal/skills/fusion/references/planner-host.md" "$APP/Contents/Resources/fusion/references/planner-host.md"
 # Also ship SwiftPM's resource bundle so Bundle.module works in packaged builds.
 for resource in "$BIN_DIR"/*.bundle; do
     if [ -d "$resource" ]; then cp -R "$resource" "$APP/Contents/Resources/"; fi

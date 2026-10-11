@@ -224,7 +224,7 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(len(lines), 3)
         self.assertEqual(lines[1]['error']['code'], -32700)
-        self.assertEqual(len(lines[2]['result']['tools']), 14)
+        self.assertEqual(len(lines[2]['result']['tools']), 18)
         self.assertFalse((self.root/'.fusion').exists())
 
     def test_oversize_stdio_rejected_then_recovers(self):

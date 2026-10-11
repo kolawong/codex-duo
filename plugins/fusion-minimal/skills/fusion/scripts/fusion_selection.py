@@ -108,11 +108,14 @@ def default_selection(catalog):
 
 
 DEFAULT_WORKFLOW = {'activation': 'manual', 'coordinator_mode': 'current_thread',
-                    'max_worker_turns': 3, 'max_parallel_workers': 1}
+                    'max_worker_turns': 3, 'max_parallel_workers': 1,
+                    'planner_mode': 'disabled', 'planner_model': '',
+                    'planner_reasoning_effort': '', 'max_planner_turns': 1}
 
 
 def validate_workflow(value):
-    if not isinstance(value, dict) or set(value) not in (set(DEFAULT_WORKFLOW), set(DEFAULT_WORKFLOW) - {'max_parallel_workers'}):
+    if (not isinstance(value, dict) or set(value) - set(DEFAULT_WORKFLOW)
+            or not {'activation', 'coordinator_mode', 'max_worker_turns'} <= set(value)):
         raise SelectionError('invalid_workflow', '请提供完整的使用方式、主控方式和执行轮数。')
     if value['activation'] not in ('automatic_project', 'manual'):
         raise SelectionError('invalid_workflow', '使用方式必须为项目自动使用或手动使用。')
@@ -122,8 +125,23 @@ def validate_workflow(value):
         raise SelectionError('invalid_workflow', '执行轮数必须为 1 到 10 的整数。')
     if type(value.get('max_parallel_workers', 1)) is not int or not 1 <= value.get('max_parallel_workers', 1) <= 3:
         raise SelectionError('invalid_workflow', '最大并行执行代理数必须为 1 到 3 的整数。')
+    if value.get('planner_mode', 'disabled') not in ('disabled', 'plan_only'):
+        raise SelectionError('invalid_workflow', '规划模式必须为 disabled 或 plan_only。')
+    if type(value.get('max_planner_turns', 1)) is not int or not 1 <= value.get('max_planner_turns', 1) <= 3:
+        raise SelectionError('invalid_workflow', '规划轮数必须为 1 到 3 的整数。')
+    for key in ('planner_model', 'planner_reasoning_effort'):
+        if not isinstance(value.get(key, ''), str):
+            raise SelectionError('invalid_workflow', '规划模型和推理强度必须为字符串。')
+        if value.get('planner_mode') == 'plan_only' and not value.get(key, '').strip():
+            raise SelectionError('invalid_workflow', '启用仅规划模式前必须选择规划模型和推理强度。')
     # Preserve legacy serialization for immutable snapshot hashes.
     return dict(value)
+
+
+def validate_planner_selection(workflow, catalog):
+    if workflow.get('planner_mode', 'disabled') == 'plan_only':
+        choice = {'model': workflow['planner_model'], 'reasoning_effort': workflow['planner_reasoning_effort']}
+        validate_selection({'coordinator': choice, 'worker': choice}, catalog)
 
 
 def saved_workflow(document):
@@ -195,7 +213,7 @@ class SelectionStore:
             if not isinstance(document, dict) or document.get('schema_version') != 1:
                 raise ValueError('schema')
             validate_selection(document['selection'], catalog)
-            saved_workflow(document)
+            validate_planner_selection(saved_workflow(document), catalog)
             if not isinstance(document.get('saved_at'), str):
                 raise ValueError('saved_at')
             return {'document': document, 'revision': revision, 'error': None}
@@ -211,6 +229,7 @@ class SelectionStore:
             current = self.read(catalog)
             preferences = saved_workflow(current['document']) if workflow is None else {
                 **saved_workflow(current['document']), **validate_workflow(workflow)}
+            validate_planner_selection(preferences, catalog)
             if expected_revision != current['revision']:
                 raise SelectionError('revision_conflict', '配置已被其他窗口更新。请恢复已保存配置后重试。', 409)
             if (current['document'] and current['document']['selection'] == value
@@ -243,6 +262,8 @@ def validate_task(task):
     from fusion import relative, argv_valid, EvidenceError
     if not isinstance(task, dict) or task.get('schema_version') != 1:
         raise SelectionError('invalid_task', '任务必须使用交接契约 schema_version=1。')
+    if task.get('mode') == 'plan_only' or {'plan_id', 'read_paths', 'suggested_tests'} & set(task):
+        raise SelectionError('invalid_task', '规划输出不能作为执行任务；请明确新建并批准执行契约。')
     for key in ['task_id', 'goal']:
         if not isinstance(task.get(key), str) or not task[key].strip() or len(task[key]) > 4000:
             raise SelectionError('invalid_task', '任务 ID 和目标不能为空。')

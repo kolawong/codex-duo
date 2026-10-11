@@ -105,6 +105,7 @@ final class SettingsStore {
         guard let draft, !isBusy, !hasExternalChange else { return false }
         return (isDirty || needsSave || requiresProjectEnable) && draft.selection.worker.isValid(in: catalog)
             && draft.selection.coordinator.isValid(in: catalog) && draft.workflow.isValid
+            && (draft.workflow.plannerMode == "disabled" || draft.workflow.plannerChoice.isValid(in: catalog))
     }
 
     func refresh(discardDraft: Bool = false) async {

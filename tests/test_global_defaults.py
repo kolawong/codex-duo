@@ -9,6 +9,7 @@ from unittest.mock import patch
 from test_native import catalog, mcp
 from fusion_service import FusionService
 from fusion_selection import SelectionError
+from fusion_selection import saved_workflow
 
 
 class GlobalDefaultsTests(unittest.TestCase):
@@ -35,7 +36,7 @@ class GlobalDefaultsTests(unittest.TestCase):
         for service, root in [(self.one,self.a),(self.two,self.b)]:
             value = service.defaults(str(root))
             self.assertEqual(value['source'],'global')
-            self.assertEqual(value['workflow'],self.workflow)
+            self.assertEqual(value['workflow'],saved_workflow({'workflow': self.workflow}))
             self.assertEqual(value['revision'],saved['revision'])
             self.assertFalse((root/'.fusion').exists())
             self.assertFalse((root/'AGENTS.md').exists())
@@ -53,7 +54,7 @@ class GlobalDefaultsTests(unittest.TestCase):
         state = self.one.reset({'project_root':str(self.a),'expected_revision':local['revision'],
             'expected_global_revision':global_saved['revision']})
         self.assertEqual(state['source'],'global')
-        self.assertEqual(state['workflow'],self.workflow)
+        self.assertEqual(state['workflow'],saved_workflow({'workflow': self.workflow}))
         self.assertEqual(before,self.one.defaults_store.global_store.path.read_bytes())
         self.assertTrue((self.a/'.fusion/history'/ (local['revision']+'.json')).exists())
 

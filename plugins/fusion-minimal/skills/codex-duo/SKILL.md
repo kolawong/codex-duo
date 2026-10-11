@@ -177,3 +177,63 @@ do not change project instructions. Unconfigured projects inherit valid global d
 The only skill entry is `$codex-duo`. Internal fusion.* tool names and
 .fusion storage remain unchanged. Existing chats may need an instruction/tool reload or a first
 explicit `$codex-duo` call; do not promise immediate instruction injection into an open chat.
+
+## Explicit plan-only request (optional independent Planner)
+
+`workflow.planner_mode=plan_only` enables an **independent advisory role**, not a switch of
+this chat's model and not the old `selected_model` coordinator mode. Its model, effort,
+and total 1–3 turn budget are separate from Worker settings. Missing legacy fields mean
+`disabled`; enabling settings alone never authorizes dispatch. Only a user's explicit
+request for a plan enters this flow. Do not use `fusion.begin` for that request.
+
+1. Inspect the actual host tool schema and documented capabilities before dispatch. It
+   must enforce read-only filesystem access, deny writes, privilege escalation, external connector tools, network operations,
+   and child-agent spawning; shell reads inside the enforced read-only sandbox are valid, while supporting the exact
+   saved Planner model and effort. A prompt saying "read only", an ordinary writable
+   native worker, a model's own capability claim, or its result is NOT enforcement. If no
+   such host tool exists, stop with `readonly_host_required` and explain the missing host
+   integration. Do not silently use a normal worker or relax sandbox permissions. This
+   release supplies the official `fusion_planner` custom-agent companion plus an adapter
+   procedure in `../fusion/references/planner-host.md`; read it before dispatch. The service
+   itself is not a native sandbox launcher. Parent runtime overrides can defeat role defaults.
+2. Call `fusion.planner_begin` with the explicit `project_root`, `invocation=explicit`, and
+   independent `request={schema_version:1, task_id, goal, read_paths, questions}`. Use exact
+   relative file paths (new files may be missing), not directories/globs. Keep the same
+   task_id for retries; never reset the total budget by creating another ID. The service
+   snapshots the model settings and Git HEAD/index/worktree content hashes, including
+   nonignored untracked files and explicitly scoped ignored files. It cannot capture a
+   constantly changing workspace; wait for unrelated edits to settle. Common credential-looking filenames (a heuristic, not secret detection), symlinks,
+   submodules, non-Git roots, and oversized baselines fail closed.
+3. Call `fusion.planner_reserve` immediately before each native dispatch, passing plan_id
+   and `host_capabilities` derived by the coordinator from the actual discovered tool:
+   tool, model, reasoning_effort, filesystem="read_only", network="disabled",
+   process_execution="read_only_sandbox" (or "disabled"), writes="disabled",
+   agent_spawn="disabled", approval_escalation="disabled", external_tools="disabled",
+   enforcement="host". Do not fabricate these fields to make validation pass. They are
+   coordinator-supplied reports, not independently authenticated attestations. This
+   service cannot intercept tool calls or prove isolation/model provenance.
+4. Dispatch only with those verified, host-enforced restrictions and exact returned
+   model/effort, using fresh context. The Planner reads and reasons, does not run tests,
+   write evidence/files, approve implementation, or spawn Worker/other agents. It returns
+   its result in memory to the coordinator, never writes into `.fusion`. Only the
+   coordinator invokes lifecycle tools. Every reservation consumes one total Planner
+   turn, including failed spawns; an unfinished reservation survives restart.
+5. Call `fusion.planner_complete` with plan_id, dispatch_id, actual native_receipt,
+   outcome=completed/failed/blocked and, only for completed, result. The independent result
+   contains schema_version=1, plan_id, dispatch_id, baseline_sha256, summary, steps, risks,
+   questions, and suggested_tests=[{argv:[...],status:"not_run"}]. No diff, changed_paths,
+   test exit code/log, claimed approval, or Worker execution evidence is accepted.
+6. Show the returned plan in this chat for user review. `fusion.planner_status` rechecks
+   the baseline and stored hashes. An identical duplicate completion is idempotent;
+   contradictory results are rejected. Changed code makes the plan stale; do not approve
+   it as current. If the user later explicitly approves implementation, first recheck
+   status and independently translate the approved scope into a fresh ordinary Worker
+   task via the EXISTING execution workflow. No auto-conversion or approval token exists.
+   A plan_id is never an execution handoff_id. Planner results grant no authority.
+
+The local fallback adds `planner_begin --request <internal.json> --invocation explicit`,
+`planner_reserve --plan-id <id> --host-capabilities <internal.json>`,
+`planner_complete --plan-id <id> --dispatch-id <id> --native-receipt <receipt>
+--outcome <completed|failed|blocked> [--result <internal.json>]`, and
+`planner_status --plan-id <id>`, all requiring the same explicit `--project-root`.
+These helpers only record contracts; they never launch models.

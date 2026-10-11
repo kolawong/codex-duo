@@ -348,4 +348,32 @@ final class FusionMenuTests: XCTestCase {
         XCTAssertFalse(store.canSave); XCTAssertFalse(store.requiresProjectEnable)
     }
 
+    func testLegacyWorkflowDecodesPlannerDisabledAndRoundTrips() throws {
+        let raw = #"{"activation":"manual","coordinator_mode":"selected_model","max_worker_turns":3}"#
+        var workflow = try JSONDecoder().decode(Workflow.self, from: Data(raw.utf8))
+        XCTAssertEqual(workflow.plannerMode, "disabled")
+        XCTAssertEqual(workflow.maxPlannerTurns, 1)
+        XCTAssertEqual(workflow.coordinatorMode, "selected_model")
+        workflow.plannerMode = "plan_only"
+        workflow.plannerChoice = ModelChoice(model: "alpha", reasoningEffort: "high")
+        let decoded = try JSONDecoder().decode(Workflow.self, from: JSONEncoder().encode(workflow))
+        XCTAssertEqual(decoded, workflow)
+        XCTAssertTrue(decoded.isValid)
+    }
+
+    @MainActor func testPlannerRequiresCatalogChoiceAndSavingDoesNotChangeCoordinator() async throws {
+        let service = StubService(try state())
+        let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+        await store.refresh()
+        let coordinator = store.draft?.selection.coordinator
+        store.draft?.workflow.plannerMode = "plan_only"
+        XCTAssertFalse(store.canSave)
+        store.draft?.workflow.plannerChoice = ModelChoice(model: "alpha", reasoningEffort: "high")
+        XCTAssertTrue(store.canSave)
+        service.saved = try state().saved
+        await store.save()
+        XCTAssertEqual(service.sent?.workflow.plannerMode, "plan_only")
+        XCTAssertEqual(service.sent?.selection.coordinator, coordinator)
+    }
+
 }

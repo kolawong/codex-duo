@@ -4,9 +4,9 @@ const efforts = {none:'无', minimal:'最低', low:'低', medium:'中', high:'�
 let state = null, draft = null, workflow = null, baseline = null, busy = false, connected = false, conflict = false, enableRequested = false, pendingScope = null;
 const clone = value => JSON.parse(JSON.stringify(value));
 const model = id => state?.catalog?.models.find(m => m.id === id);
-const changes = () => !baseline || !draft ? 0 : roles.reduce((count, role) => count + Number(draft[role].model !== baseline.selection[role].model) + Number(draft[role].reasoning_effort !== baseline.selection[role].reasoning_effort), 0) + ['activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers'].reduce((count, key) => count + Number(workflow[key] !== baseline.workflow[key]), 0);
+const changes = () => !baseline || !draft ? 0 : roles.reduce((count, role) => count + Number(draft[role].model !== baseline.selection[role].model) + Number(draft[role].reasoning_effort !== baseline.selection[role].reasoning_effort), 0) + ['activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'].reduce((count, key) => count + Number(workflow[key] !== baseline.workflow[key]), 0);
 const dirty = () => changes() > 0;
-const valid = () => Boolean(draft && workflow && roles.every(role => model(draft[role].model)?.efforts.includes(draft[role].reasoning_effort)) && ['automatic_project','manual'].includes(workflow.activation) && ['current_thread','selected_model'].includes(workflow.coordinator_mode) && Number.isInteger(workflow.max_worker_turns) && workflow.max_worker_turns >= 1 && workflow.max_worker_turns <= 10 && Number.isInteger(workflow.max_parallel_workers) && workflow.max_parallel_workers >= 1 && workflow.max_parallel_workers <= 3);
+const valid = () => Boolean(draft && workflow && roles.every(role => model(draft[role].model)?.efforts.includes(draft[role].reasoning_effort)) && ['automatic_project','manual'].includes(workflow.activation) && ['current_thread','selected_model'].includes(workflow.coordinator_mode) && Number.isInteger(workflow.max_worker_turns) && workflow.max_worker_turns >= 1 && workflow.max_worker_turns <= 10 && Number.isInteger(workflow.max_parallel_workers) && workflow.max_parallel_workers >= 1 && workflow.max_parallel_workers <= 3 && ['disabled','plan_only'].includes(workflow.planner_mode) && Number.isInteger(workflow.max_planner_turns) && workflow.max_planner_turns >= 1 && workflow.max_planner_turns <= 3 && (workflow.planner_mode === 'disabled' || model(workflow.planner_model)?.efforts.includes(workflow.planner_reasoning_effort)));
 const canSave = () => !busy && connected && !conflict && valid() && (dirty() || Boolean(state.saved.error) || (!state.saved.document && (state.scope === 'global' || !state.effective?.document)) || enableRequested);
 const conflictMessage = '配置已在别处更新。已保留你的修改；请放弃修改并重新载入最新配置。';
 
@@ -26,7 +26,7 @@ async function request(path, body) {
 }
 function restoreDraft() {
   draft = clone(state.saved.document?.selection || state.default);
-  workflow = {max_parallel_workers:1, ...clone(state.workflow)};
+  workflow = {max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...clone(state.workflow)};
   if (!state.saved.document && !state.effective?.document && !state.saved.error) workflow.activation = 'manual';
   enableRequested = false;
   baseline = {selection:clone(draft), workflow:clone(workflow), revision:state.saved.revision, globalRevision:state.global_revision};
@@ -67,6 +67,18 @@ function render() {
     $('activation-automatic').setAttribute('aria-pressed', String(automatic));
     $('activation-manual').setAttribute('aria-pressed', String(!automatic));
     $('activation-description').textContent = (state.scope === 'global') ? (automatic ? '各项目开发任务自动启用；项目独立设置优先。' : '各项目默认手动启用；项目覆盖优先。') : state.source === 'global' ? (automatic ? '继承全局自动模式，开发任务会自动启用。编辑后保存为当前项目独立设置。' : '继承全局手动模式，仅明确要求时启用。') : automatic ? (state.project_opt_in?.enabled ? '在这个项目里提开发任务时自动启用，不用每次说明。' : '选择自动后保存，会在本项目 AGENTS.md 添加 Codex Duo 指令。已有聊天首次可调用 $codex-duo。') : '只在你于聊天中明确要求时启用。';
+    $('planner-mode').value = workflow.planner_mode;
+    $('max-planner-turns').value = String(workflow.max_planner_turns);
+    const plannerSelect = $('planner-model'), plannerEffort = $('planner-effort');
+    plannerSelect.replaceChildren(new Option('请选择模型', '')); plannerEffort.replaceChildren(new Option('请选择推理强度', ''));
+    for (const item of state.catalog.models) plannerSelect.add(new Option(item.name, item.id));
+    if (workflow.planner_model && !model(workflow.planner_model)) plannerSelect.add(new Option(`不可用：${workflow.planner_model}`, workflow.planner_model));
+    plannerSelect.value = workflow.planner_model;
+    const plannerEfforts = model(workflow.planner_model)?.efforts || [];
+    for (const item of plannerEfforts) plannerEffort.add(new Option(efforts[item] || item, item));
+    if (workflow.planner_reasoning_effort && !plannerEfforts.includes(workflow.planner_reasoning_effort)) plannerEffort.add(new Option(`不可用：${workflow.planner_reasoning_effort}`, workflow.planner_reasoning_effort));
+    plannerEffort.value = workflow.planner_reasoning_effort;
+    for (const id of ['planner-model','planner-effort','max-planner-turns']) $(id).disabled = workflow.planner_mode !== 'plan_only';
     $('coordinator-mode').value = workflow.coordinator_mode;
     $('coordinator-summary').textContent = selected ? '指定模型' : '当前聊天';
     $('coordinator-help').textContent = selected ? '只记录你偏好的规划模型。只有你明确要求时才会新建聊天。' : '你正在使用的聊天负责拆解任务和验收结果。Codex Duo 不会更改它的模型。';
@@ -121,6 +133,15 @@ for (const role of roles) {
   $(`${role}-effort`).addEventListener('change', event => {draft[role].reasoning_effort=event.target.value; edited();});
 }
 for (const [id,value] of [['activation-automatic','automatic_project'],['activation-manual','manual']]) $(id).addEventListener('click', () => {workflow.activation=value; enableRequested=(state.scope || 'project')==='project' && value==='automatic_project' && state.source!=='global' && !state.project_opt_in?.enabled; edited();});
+$('planner-mode').addEventListener('change', event => {workflow.planner_mode=event.target.value; edited();});
+$('planner-model').addEventListener('change', event => {
+  workflow.planner_model=event.target.value;
+  const option=model(workflow.planner_model);
+  if (option && !option.efforts.includes(workflow.planner_reasoning_effort)) workflow.planner_reasoning_effort=option.default_effort;
+  edited();
+});
+$('planner-effort').addEventListener('change', event => {workflow.planner_reasoning_effort=event.target.value; edited();});
+$('max-planner-turns').addEventListener('change', event => {workflow.max_planner_turns=Number(event.target.value); edited();});
 $('max-parallel-workers').addEventListener('change', event => {workflow.max_parallel_workers=Number(event.target.value); edited();});
 $('coordinator-mode').addEventListener('change', event => {workflow.coordinator_mode=event.target.value; edited();});
 $('max-worker-turns').addEventListener('change', event => {workflow.max_worker_turns=Number(event.target.value); edited();});

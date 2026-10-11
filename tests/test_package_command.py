@@ -66,7 +66,7 @@ class PackageCommandTests(unittest.TestCase):
             responses = [json.loads(line) for line in result.stdout.splitlines()]
             self.assertEqual(responses[0]['result']['serverInfo']['version'],
                              json.loads((PLUGIN/'plugin.json').read_text())['version'])
-            self.assertEqual(len(responses[1]['result']['tools']), 14)
+            self.assertEqual(len(responses[1]['result']['tools']), 18)
             self.assertFalse((Path(tmp)/'.fusion').exists())
 
     def test_launcher_without_path_and_from_unrelated_cwd(self):
@@ -91,7 +91,7 @@ class PackageCommandTests(unittest.TestCase):
                 input=''.join(json.dumps(r)+'\n' for r in requests), capture_output=True, text=True, timeout=10)
             self.assertEqual(run.returncode, 0, run.stderr)
             replies = [json.loads(line) for line in run.stdout.splitlines()]
-            self.assertEqual(len(replies[1]['result']['tools']), 14)
+            self.assertEqual(len(replies[1]['result']['tools']), 18)
             self.assertEqual(replies[2]['result']['resources'][0]['uri'], 'ui://fusion-minimal/model-desk-v4')
             self.assertFalse(replies[3]['result'].get('isError'), replies[3])
             self.assertEqual(set(replies[3]['result']['structuredContent']['values']), {'coordinator', 'worker', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers'})

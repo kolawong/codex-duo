@@ -28,6 +28,20 @@ def main():
             sub.add_argument('--dispatch-id', required=True)
             sub.add_argument('--native-receipt', required=True)
             sub.add_argument('--outcome', choices=['completed', 'failed', 'blocked'], required=True)
+    for command in ('planner_begin', 'planner_reserve', 'planner_complete', 'planner_status'):
+        sub = commands.add_parser(command)
+        sub.add_argument('--project-root', type=Path, required=True)
+        if command == 'planner_begin':
+            sub.add_argument('--request', type=Path, required=True)
+            sub.add_argument('--invocation', choices=['explicit'], required=True)
+        else:
+            sub.add_argument('--plan-id', required=True)
+        if command == 'planner_reserve': sub.add_argument('--host-capabilities', type=Path, required=True)
+        if command == 'planner_complete':
+            sub.add_argument('--dispatch-id', required=True)
+            sub.add_argument('--native-receipt', required=True)
+            sub.add_argument('--outcome', choices=['completed', 'failed', 'blocked'], required=True)
+            sub.add_argument('--result', type=Path)
     args = parser.parse_args()
     try:
         args.project_root = project_path(args.project_root)
@@ -41,7 +55,12 @@ def main():
             body = {key: value for key, value in vars(args).items() if key != 'command' and value is not None}
             body['project_root'] = str(args.project_root)
             if body.get('workstreams'): body['workstreams'] = json.loads(body['workstreams'].read_text())
-            result = service.parallel(args.command, body)
+            if args.command.startswith('planner_'):
+                for key in ('request', 'host_capabilities', 'result'):
+                    if body.get(key): body[key] = json.loads(body[key].read_text())
+                result = service.planning(args.command.removeprefix('planner_'), body)
+            else:
+                result = service.parallel(args.command, body)
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except (SelectionError, OSError, ValueError) as exc:

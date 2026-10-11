@@ -31,6 +31,10 @@ struct SettingsView: View {
                 d.workflow.maxWorkerTurns != b.workflow.maxWorkerTurns,
                 d.workflow.maxParallelWorkers != b.workflow.maxParallelWorkers,
                 d.workflow.coordinatorMode != b.workflow.coordinatorMode,
+                d.workflow.plannerMode != b.workflow.plannerMode,
+                d.workflow.plannerModel != b.workflow.plannerModel,
+                d.workflow.plannerReasoningEffort != b.workflow.plannerReasoningEffort,
+                d.workflow.maxPlannerTurns != b.workflow.maxPlannerTurns,
                 d.selection.coordinator.model != b.selection.coordinator.model,
                 d.selection.coordinator.reasoningEffort != b.selection.coordinator.reasoningEffort]
             .filter { $0 }.count
@@ -260,10 +264,34 @@ struct SettingsView: View {
                     }
                 }
             }
+            plannerSection
             advancedSection
         }
         .disabled(store.isBusy)
         .animation(Theme.ease, value: changeCount)
+    }
+
+    private var plannerSection: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                SegmentedControl(label: "独立规划者", options: [
+                    SegmentOption(id: "disabled", title: "关闭", systemImage: "pause"),
+                    SegmentOption(id: "plan_only", title: "仅规划", systemImage: "list.bullet")
+                ], selection: workflow(\.plannerMode, fallback: "disabled"))
+                Text("保存仅更新设置，不启动模型。仅规划不会自动执行 Worker；启动前必须确认宿主只读隔离及模型支持。")
+                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.padding(10)
+            if draft?.workflow.plannerMode == "plan_only" {
+                CardDivider(inset: 0)
+                ModelFields(choice: workflow(\.plannerChoice, fallback: ModelChoice(model: "", reasoningEffort: "")),
+                            baseline: baseline?.workflow.plannerChoice, catalog: store.catalog)
+                FieldRow(label: "规划次数上限", systemImage: "repeat",
+                         changed: draft?.workflow.maxPlannerTurns != baseline?.workflow.maxPlannerTurns) {
+                    PillStepper(label: "规划次数上限", value: workflow(\.maxPlannerTurns, fallback: 1), range: 1...3, unit: "次")
+                }
+            }
+        }
     }
 
     private var advancedSection: some View {
@@ -466,7 +494,7 @@ private struct ModelFields: View {
     private var modelOptions: [PickerOption] {
         var options = (catalog?.models ?? []).map { PickerOption(id: $0.id, title: $0.name, detail: $0.description) }
         if model == nil {
-            options.insert(PickerOption(id: choice.model, title: "\(choice.model)（本机不可用）", available: false), at: 0)
+            options.insert(PickerOption(id: choice.model, title: choice.model.isEmpty ? "请选择模型" : "\(choice.model)（本机不可用）", available: false), at: 0)
         }
         return options
     }
@@ -474,7 +502,7 @@ private struct ModelFields: View {
     private var effortOptions: [PickerOption] {
         var options = (model?.efforts ?? []).map { PickerOption(id: $0, title: Self.effortName($0), detail: $0) }
         if !(model?.efforts.contains(choice.reasoningEffort) ?? false) {
-            options.insert(PickerOption(id: choice.reasoningEffort, title: "\(Self.effortName(choice.reasoningEffort))（此模型不支持）",
+            options.insert(PickerOption(id: choice.reasoningEffort, title: choice.reasoningEffort.isEmpty ? "请选择推理强度" : "\(Self.effortName(choice.reasoningEffort))（此模型不支持）",
                                         available: false), at: 0)
         }
         return options

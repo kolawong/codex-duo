@@ -17,6 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from panel.server import PanelServer, PanelService
 from test_selection import catalog
+from fusion_selection import saved_workflow
 
 
 class PanelHTTPTests(unittest.TestCase):
@@ -71,7 +72,7 @@ class PanelHTTPTests(unittest.TestCase):
         status, restored=self.request('POST','/api/reset',{'project_root':project['project_root'],
             'expected_revision':local['revision'],'expected_global_revision':saved['revision']})
         self.assertEqual(status,200);self.assertEqual(restored['source'],'global')
-        self.assertEqual(restored['workflow'],workflow)
+        self.assertEqual(restored['workflow'],saved_workflow({'workflow': workflow}))
 
     def test_invalid_model_returns_actionable_error(self):
         _, state = self.request('GET', '/api/state')

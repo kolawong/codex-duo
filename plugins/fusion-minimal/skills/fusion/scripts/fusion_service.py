@@ -89,6 +89,11 @@ class FusionService:
                 'coordinator': {'mode': workflow['coordinator_mode'],
                     'selected_model': saved['document']['selection']['coordinator']
                     if workflow['coordinator_mode'] == 'selected_model' else None},
+                'planner': {'mode': workflow.get('planner_mode', 'disabled'),
+                    'model': workflow.get('planner_model', ''),
+                    'reasoning_effort': workflow.get('planner_reasoning_effort', ''),
+                    'max_turns': workflow.get('max_planner_turns', 1)},
+                'planning_tool': 'fusion.planner_begin',
                 'next_tool': 'fusion.begin', 'execution_started': False,
                 'instructions': 'Use these saved settings for the authorized task. Do not reopen settings, '
                     'ask for JSON or handoff paths, or request the same approval again. '
@@ -145,6 +150,11 @@ class FusionService:
             'coordinator_mode': {'type': 'string', 'title': '主控方式',
                 'enum': ['current_thread', 'selected_model'],
                 'description': 'current_thread：当前聊天规划验收；selected_model：另开聊天使用指定主控。'},
+            'planner_mode': {'type': 'string', 'title': '独立规划代理', 'enum': ['disabled', 'plan_only'],
+                'description': '仅规划返回当前聊天确认。要求宿主确认只读能力；不会启动执行代理。'},
+            'planner_model': {'type': 'string', 'title': '规划模型', 'enum': [''] + [m['id'] for m in state['catalog']['models']]},
+            'planner_reasoning_effort': {'type': 'string', 'title': '规划强度', 'enum': [''] + sorted({e for m in state['catalog']['models'] for e in m['efforts']})},
+            'max_planner_turns': {'type': 'string', 'title': '规划总轮数', 'enum': [str(n) for n in range(1, 4)]},
             'max_parallel_workers': {'type': 'string', 'title': '高级：最大并行执行代理数',
                 'enum': ['1', '2', '3'], 'description': '默认 1；独立任务可并行，受宿主容量和整个任务总执行次数限制。'},
             'max_worker_turns': {'type': 'string', 'title': '每项任务最多执行轮数',
@@ -160,7 +170,8 @@ class FusionService:
     def settings_values(selection, workflow):
         return {**{r: selection[r]['model'] + ' / ' + selection[r]['reasoning_effort'] for r in selection},
                 **workflow, 'max_worker_turns': str(workflow['max_worker_turns']),
-                'max_parallel_workers': str(workflow['max_parallel_workers'])}
+                'max_parallel_workers': str(workflow['max_parallel_workers']),
+                'max_planner_turns': str(workflow.get('max_planner_turns', 1))}
 
     def settings_update(self, changes):
         with self.defaults_store.global_store.lock:
@@ -172,10 +183,11 @@ class FusionService:
             workflow = saved_workflow(saved['document'])
             for role, pair in changes.items():
                 if role in workflow:
-                    if role in ('max_worker_turns', 'max_parallel_workers'):
+                    if role in ('max_worker_turns', 'max_parallel_workers', 'max_planner_turns'):
                         if not isinstance(pair, str) or not pair.isascii() or not pair.isdigit():
                             raise SelectionError('invalid_workflow', '最大并行执行代理数必须为 1 到 3。'
-                                if role == 'max_parallel_workers' else '执行轮数必须为 1 到 10。')
+                                if role == 'max_parallel_workers' else '规划轮数必须为 1 到 3。'
+                                if role == 'max_planner_turns' else '执行轮数必须为 1 到 10。')
                         pair = int(pair)
                     workflow[role] = pair
                     continue
@@ -255,3 +267,11 @@ class FusionService:
             raise SelectionError('coordinator_required', '当前交接不能由本聊天派发执行代理。', 409)
         runner = ParallelExecution(self.store, plan)
         return getattr(runner, operation)(body)
+
+    def planning(self, operation, body):
+        """Separate plan-only lifecycle; it never enters the execution ledger."""
+        self.check_project(body.get('project_root'))
+        if operation not in ('begin', 'reserve', 'complete', 'status'):
+            raise SelectionError('invalid_arguments', '未知规划操作。')
+        from fusion_planner import PlannerExecution
+        return getattr(PlannerExecution(self), operation)(body)

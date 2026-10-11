@@ -25,7 +25,10 @@ WORKFLOW = {'type': 'object', 'properties': {
     'activation': {'type': 'string', 'enum': ['automatic_project', 'manual']},
     'coordinator_mode': {'type': 'string', 'enum': ['current_thread', 'selected_model']},
     'max_worker_turns': {'type': 'integer', 'minimum': 1, 'maximum': 10},
-    'max_parallel_workers': {'type': 'integer', 'minimum': 1, 'maximum': 3}},
+    'max_parallel_workers': {'type': 'integer', 'minimum': 1, 'maximum': 3},
+    'planner_mode': {'type': 'string', 'enum': ['disabled', 'plan_only']},
+    'planner_model': {'type': 'string'}, 'planner_reasoning_effort': {'type': 'string'},
+    'max_planner_turns': {'type': 'integer', 'minimum': 1, 'maximum': 3}},
     'required': ['activation', 'coordinator_mode', 'max_worker_turns'], 'additionalProperties': False}
 
 
@@ -66,7 +69,7 @@ def tool_definitions():
                  'required': ['schema', 'values']}),
         tool('fusion.settings_update', '更新 Codex Duo 原生设置', object_schema({'set': {
              'type': 'object', 'properties': {key: {'type': 'string'} for key in
-                 ('coordinator', 'worker', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers')},
+                 ('coordinator', 'worker', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns')},
              'minProperties': 1, 'additionalProperties': False}}), readonly=False,
              outputSchema={'type': 'object', 'properties': {'values': {'type': 'object'}}, 'required': ['values']})]
     for operation, properties, required in [
@@ -77,8 +80,22 @@ def tool_definitions():
         definitions.append(tool('fusion.' + operation, '原生执行子任务：' + operation,
             object_schema({'handoff_id': {'type': 'string', 'pattern': '^[a-f0-9]{24}$'}, **properties}, required + ['project_root']),
             readonly=operation == 'verify', model=True))
+    capabilities = object_schema({key: {'type': 'string'} for key in (
+        'tool', 'model', 'reasoning_effort', 'filesystem', 'network', 'process_execution',
+        'writes', 'agent_spawn', 'enforcement', 'approval_escalation', 'external_tools')})
+    for operation, properties, required in [
+        ('begin', {'request': {'type': 'object'}, 'invocation': {'type': 'string', 'enum': ['explicit']}}, ['request', 'invocation']),
+        ('reserve', {'host_capabilities': capabilities}, ['plan_id', 'host_capabilities']),
+        ('complete', {'dispatch_id': {'type': 'string'}, 'native_receipt': {'type': 'string'},
+                      'outcome': {'type': 'string', 'enum': ['completed', 'failed', 'blocked']},
+                      'result': {'type': 'object'}}, ['plan_id', 'dispatch_id', 'native_receipt', 'outcome']),
+        ('status', {}, ['plan_id'])]:
+        properties = {'project_root': {'type': 'string'}, **properties}
+        if operation != 'begin': properties['plan_id'] = {'type': 'string', 'pattern': '^[a-f0-9]{24}$'}
+        definitions.append(tool('fusion.planner_' + operation, '独立仅规划：' + operation,
+            object_schema(properties, ['project_root'] + required), readonly=operation == 'status', model=True))
     for definition in definitions:
-        if definition['name'] == 'fusion.reserve':
+        if definition['name'] in ('fusion.reserve', 'fusion.planner_reserve', 'fusion.planner_begin'):
             definition['annotations']['idempotentHint'] = False
     # Each call is scoped independently. Omitted root remains a legacy fixed-root fallback.
     for definition in definitions:
@@ -160,6 +177,8 @@ class MCPServer:
             return result(service.execution_plan(arguments['handoff_id']))
         if name in ('fusion.plan', 'fusion.reserve', 'fusion.complete', 'fusion.verify'):
             return result(service.parallel(name.split('.')[1], scoped))
+        if name.startswith('fusion.planner_'):
+            return result(service.planning(name.split('planner_')[1], scoped))
         if name == 'fusion.settings_read':
             return result(service.settings_read())
         return result(service.settings_update(arguments['set']))

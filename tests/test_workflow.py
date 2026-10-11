@@ -16,6 +16,7 @@ from unittest.mock import patch
 from test_native import mcp, catalog
 from fusion_service import FusionService
 from fusion_selection import SelectionError
+from fusion_selection import saved_workflow
 
 
 class WorkflowTests(unittest.TestCase):
@@ -61,7 +62,7 @@ class WorkflowTests(unittest.TestCase):
         value = another.defaults(str(self.root))
         self.assertTrue(value['configured'])
         self.assertEqual(self.selection['worker'], value['worker'])
-        self.assertEqual(self.workflow, value['workflow'])
+        self.assertEqual(saved_workflow({'workflow': self.workflow}), value['workflow'])
         self.assertEqual(saved['revision'], value['revision'])
         self.assertEqual(before, self.service.store.path.read_bytes())
         self.assertIsNone(value['coordinator']['selected_model'])
@@ -160,7 +161,7 @@ class WorkflowTests(unittest.TestCase):
         saved = self.save()
         self.selection['worker']['reasoning_effort'] = 'medium'
         saved = self.service.save({'selection': self.selection, 'expected_revision': saved['revision']})
-        self.assertEqual(self.workflow, saved['document']['workflow'])
+        self.assertEqual(saved_workflow({'workflow': self.workflow}), saved['document']['workflow'])
 
     def test_invalid_workflow_cannot_replace_saved_preferences(self):
         saved = self.save()
