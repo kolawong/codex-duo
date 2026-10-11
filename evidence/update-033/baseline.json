@@ -1,5 +1,0 @@
-{
-  "global_config_sha256": "16d19b21eb6ec0e31bc0539c3c630344d94bca2a4b71372ffe356c0e2a72a58a",
-  "thread": "01a11bc7-6e7b-7662-9d35-2f6f4f0800f9",
-  "initial_error": "MCP startup failed: exec-server rejected request (-32603): No such file or directory (os error 2)"
-}

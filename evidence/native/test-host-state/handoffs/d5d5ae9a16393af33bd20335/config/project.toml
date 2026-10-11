@@ -1,9 +1,0 @@
-model = "gpt-6-astra"
-model_reasoning_effort = "high"
-
-[agents]
-enabled = false
-max_concurrent_threads_per_session = 1
-
-[features]
-hooks = false

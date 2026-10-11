@@ -1,4 +1,0 @@
-{
-  "fusionTools": [],
-  "resourceError": "resources/list failed: failed to get client: MCP startup failed: exec-server rejected request (-32603): No such file or directory (os error 2)"
-}

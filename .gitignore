@@ -1,11 +1,33 @@
+# Python caches and local environments
 __pycache__/
-*.pyc
-evidence/probe-state/
-evidence/current/probe-state/
-.fusion/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-native-build/node_modules/
+# Dependencies and build outputs
+node_modules/
+/macos/.build/
+/macos/dist/
+/fusion-minimal-*.zip
+/FILES.txt
 
-macos/.build/
-macos/dist/
+# Local task state and generated evidence; keep validation inputs and reports
+/.fusion/
+/evidence/*
+!/evidence/bundled-models.json
+!/evidence/local-capabilities.json
+!/evidence/*/
+/evidence/*/*
+!/evidence/*/REPORT.md
+
+# Local configuration and operating-system/editor files
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.log
 .DS_Store
+xcuserdata/
+*.xcuserstate

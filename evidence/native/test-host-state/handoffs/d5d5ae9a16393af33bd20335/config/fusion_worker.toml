@@ -1,5 +1,0 @@
-name = "fusion_worker"
-description = "Execute the approved bounded task and return compact evidence."
-model = "gpt-6-luna"
-model_reasoning_effort = "high"
-developer_instructions = "Read task.json; stay within allowed_paths; return diff, test evidence and blockers. Do not spawn more agents or change global configuration. Launch only after user approval."

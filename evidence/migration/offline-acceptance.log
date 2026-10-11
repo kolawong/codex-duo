@@ -1,1 +1,0 @@
-{"status": "evidence_valid", "task_id": "fusion-demo-001", "summary": "Offline fixture: corrected addition; 2 tests passed. No model called.", "changed_paths": ["math_ops.py"], "test_count": 1, "diff": "change.diff", "blockers": [], "requires_coordinator_review": true}

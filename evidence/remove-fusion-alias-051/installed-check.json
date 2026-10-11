@@ -1,9 +1,0 @@
-{
-  "version": "0.5.1",
-  "skill_entries": [
-    "skills/codex-duo/SKILL.md"
-  ],
-  "protected_files_unchanged": true,
-  "shared_helpers_present": true,
-  "static_validation": "passed"
-}

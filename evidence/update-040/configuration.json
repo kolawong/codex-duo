@@ -1,9 +1,0 @@
-{
-  "selection_preserved": true,
-  "workflow": {
-    "activation": "automatic_project",
-    "coordinator_mode": "current_thread",
-    "max_worker_turns": 3
-  },
-  "execution_started": false
-}
