@@ -13,12 +13,21 @@ from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError
 from codex_duo_projects import project_path
 
-VERSION = '0.9.8'
+VERSION = '0.9.9'
 RESOURCE = 'ui://codex-duo/model-desk-v4'
 MIME = 'text/html;profile=mcp-app'
 EMPTY = {'type': 'object', 'properties': {}, 'additionalProperties': False}
 PAIR = {'type': 'object', 'properties': {'model': {'type': 'string'},
         'reasoning_effort': {'type': 'string'}}, 'required': ['model', 'reasoning_effort'], 'additionalProperties': False}
+WORKER_OVERRIDE = {**PAIR, 'required': [], 'minProperties': 1}
+NATIVE_DISPATCH = {'type': 'object', 'properties': {
+    'tool': {'type': 'string'}, 'agent_id': {'type': 'string'},
+    'parameters': {'type': 'object', 'properties': {**PAIR['properties'],
+        'agent_type': {'type': 'string', 'enum': ['codex_duo_worker']},
+        'fork_turns': {'type': 'string', 'enum': ['none']}},
+        'required': ['model', 'reasoning_effort', 'agent_type', 'fork_turns'], 'additionalProperties': False},
+    'runtime': {**PAIR, 'required': []}},
+    'required': ['tool', 'agent_id', 'parameters'], 'additionalProperties': False}
 SELECTION = {'type': 'object', 'properties': {r: PAIR for r in ('coordinator', 'worker')},
              'required': ['coordinator', 'worker'], 'additionalProperties': False}
 WORKFLOW = {'type': 'object', 'properties': {
@@ -58,7 +67,8 @@ def tool_definitions():
              object_schema({'project_root': {'type': 'string'}}), model=True),
         tool('codex_duo_begin', '按已保存配置准备当前任务，由当前聊天调度原生执行代理',
              object_schema({'project_root': {'type': 'string'}, 'task': {'type': 'object'},
-                 'invocation': {'type': 'string', 'enum': ['automatic', 'explicit']}}), readonly=False, model=True),
+                 'invocation': {'type': 'string', 'enum': ['automatic', 'explicit']},
+                 'worker_override': WORKER_OVERRIDE}, ['project_root', 'task', 'invocation']), readonly=False, model=True),
         tool('codex_duo_prepare', '兼容旧式声明交接；当前聊天执行请用 codex_duo_begin', object_schema({'task': {'type': 'object'},
              'expected_revision': {'type': 'string'}}), readonly=False, model=True),
         tool('codex_duo_execution_plan', '只读检查交接状态与派发资格，不建立子任务计划', object_schema({'handoff_id': {'type': 'string',
@@ -75,7 +85,8 @@ def tool_definitions():
     for operation, properties, required in [
         ('plan', {'host_capacity': {'type': 'integer', 'minimum': 1}, 'workstreams': {'type': 'array', 'items': {'type': 'object'}}}, ['handoff_id', 'host_capacity']),
         ('reserve', {'host_capacity': {'type': 'integer', 'minimum': 1}, 'workstream_id': {'type': 'string'}}, ['handoff_id', 'host_capacity', 'workstream_id']),
-        ('complete', {'dispatch_id': {'type': 'string'}, 'native_receipt': {'type': 'string'}, 'outcome': {'type': 'string', 'enum': ['completed', 'failed', 'blocked', 'cancelled']}}, ['handoff_id', 'dispatch_id', 'native_receipt', 'outcome']),
+        ('complete', {'dispatch_id': {'type': 'string'}, 'native_receipt': {'type': 'string'}, 'native_dispatch': NATIVE_DISPATCH,
+                      'outcome': {'type': 'string', 'enum': ['completed', 'failed', 'blocked', 'cancelled']}}, ['handoff_id', 'dispatch_id', 'native_receipt', 'outcome']),
         ('verify', {}, ['handoff_id'])]:
         definitions.append(tool('codex_duo_' + operation, '原生执行子任务：' + operation,
             object_schema({'handoff_id': {'type': 'string', 'pattern': '^[a-f0-9]{24}$'}, **properties}, required + ['project_root']),
@@ -103,7 +114,7 @@ def tool_definitions():
             definitions[-1]['annotations']['openWorldHint'] = True
     for definition in definitions:
         if definition['name'] == 'codex_duo_begin':
-            definition['description'] = '当前聊天执行任务的正常入口：读取有效设置并保存含 workflow 的不可变交接；仅准备，不调用模型。之后使用 codex_duo_plan → reserve → 原生派发 → complete → verify，无需先调用 prepare。'
+            definition['description'] = '当前聊天执行入口：可选 worker_override={model?,reasoning_effort?} 仅覆盖新任务，按字段优先于项目/全局默认，合并后校验。保存不可变快照与来源，重复 task_id 冲突拒绝；不改偏好、不启动 Planner/Worker。之后 plan → reserve → 原生派发 → complete → verify。'
         elif definition['name'] == 'codex_duo_prepare':
             definition['description'] = '旧式兼容入口：生成不含 workflow 的声明交接，状态 approval_required，不能直接用于 codex_duo_plan/reserve。当前聊天任务应调用 codex_duo_begin；不得通过替换旧交接或 task_id 重置已有预算。此工具不调用模型。'
         elif definition['name'] == 'codex_duo_execution_plan':

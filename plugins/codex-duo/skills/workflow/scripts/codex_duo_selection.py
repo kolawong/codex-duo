@@ -95,11 +95,23 @@ def presets(catalog):
         except SelectionError:
             continue
         result.append({"id": key, "name": name, "description": description, "selection": value})
+    # Append only: adding a preset must not change the historical default.
+    first = catalog['models'][0]
+    light = {"coordinator": result[0]['selection']['coordinator'] if result else
+             {"model": first['id'], "reasoning_effort": first['default_effort']},
+             "worker": {"model": "gpt-6-luna", "reasoning_effort": "low"}}
+    try:
+        validate_selection(light, catalog)
+    except SelectionError:
+        pass
+    else:
+        result.append({"id": "light", "name": "轻任务", "description": "Luna low 执行；当前聊天规划验收，不启动 Planner。",
+                       "selection": light, "worker_only": True})
     return result
 
 
 def default_selection(catalog):
-    options = presets(catalog)
+    options = [p for p in presets(catalog) if p['id'] != 'light']
     if options:
         return options[0]['selection']
     first = catalog['models'][0]
@@ -205,7 +217,7 @@ class SelectionStore:
         self.path = self.directory / 'selection.json'
         self.lock = StorageLock(self.directory)
 
-    def read(self, catalog):
+    def read(self, catalog, *, defer_worker_validation=False):
         if self.directory.is_symlink() or self.path.is_symlink():
             raise SelectionError('unsafe_storage', '配置文件不能是符号链接。', 409)
         try:
@@ -217,7 +229,17 @@ class SelectionStore:
             document = json.loads(raw)
             if not isinstance(document, dict) or document.get('schema_version') != 1:
                 raise ValueError('schema')
-            validate_selection(document['selection'], catalog)
+            selection = document['selection']
+            if defer_worker_validation:
+                # begin validates the merged Worker, not superseded default values.
+                # Structural corruption and unrelated settings still fail closed.
+                if (not isinstance(selection, dict) or set(selection) != {'coordinator', 'worker'}
+                        or not isinstance(selection['worker'], dict)
+                        or set(selection['worker']) != {'model', 'reasoning_effort'}):
+                    raise ValueError('selection shape')
+                validate_selection({r: selection['coordinator'] for r in ('coordinator', 'worker')}, catalog)
+            else:
+                validate_selection(selection, catalog)
             validate_planner_selection(saved_workflow(document), catalog)
             if not isinstance(document.get('saved_at'), str):
                 raise ValueError('saved_at')
@@ -326,13 +348,16 @@ def validate_task(task):
     return json.loads(canonical(task))
 
 
-def prepare_handoff(task, selection, catalog, destination, revision, workflow=None, *, legacy_completion=False):
+def prepare_handoff(task, selection, catalog, destination, revision, workflow=None, *, legacy_completion=False,
+                    worker_resolution=None):
     task = validate_task(task)
     selection = validate_selection(selection, catalog)
     payload = {'schema_version': 1, 'task': task, 'selection': selection,
                'catalog_fingerprint': catalog['fingerprint'], 'selection_revision': revision}
     if workflow is not None:
         payload['workflow'] = validate_workflow(workflow, legacy_completion=legacy_completion)
+    if worker_resolution is not None:
+        payload['worker_resolution'] = worker_resolution
     identifier = digest(payload)[:24]
     root = safe_directory(destination)
     target = root / identifier
@@ -349,7 +374,7 @@ def prepare_handoff(task, selection, catalog, destination, revision, workflow=No
         'handoff.json': json.dumps(manifest, ensure_ascii=False, indent=2) + '\n',
         'config/project.toml': toml(coordinator) + '\n[agents]\nenabled = false\nmax_concurrent_threads_per_session = 1\n\n[features]\nhooks = false\n',
         'config/codex_duo_worker.toml': 'name = "codex_duo_worker"\ndescription = "Execute the approved bounded task and return compact evidence."\n' + toml(worker) +
-            'developer_instructions = "Read task.json; stay within allowed_paths; return diff, test evidence and blockers. Do not spawn more agents or change global configuration. Launch only after user approval."\n',
+            'developer_instructions = "Read task.json; stay within allowed_paths; return diff, test evidence and blockers. Execute reviewed task tests as the JSON-decoded argv list with subprocess.run(argv, shell=False). Decode JSON once only; never apply unicode_escape, replace backslash escapes, interpolate argv into shell/Python source, or reconstruct -c strings. Record the actual executed argv and exit code, not a copied contract argv. Do not spawn more agents or change global configuration. Launch only after user approval."\n',
         'README.md': '# Prepared Codex Duo handoff\n\nThis package has not started a task.\n'
             'Create a new coordinator task with the requested model and effort after approval.\n'
             'Verify the actual coordinator model before launching the bounded worker.\n'

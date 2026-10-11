@@ -43,6 +43,10 @@ function render() {
   $('project-note').hidden = !projectScope;
   $('global-scope-note').hidden = projectScope;
   $('settings-source').textContent = state?.source === 'project' ? '项目独立设置' : state?.source === 'global' ? (state?.scope === 'project' ? '继承全局默认' : '已保存的全局默认') : '未配置';
+  $('worker-preset').replaceChildren(new Option('选择预设（未保存）', ''));
+  for (const preset of state?.presets || []) $('worker-preset').add(new Option(preset.name, preset.id));
+  const savedWorker = saved?.selection?.worker;
+  $('worker-default-summary').textContent = savedWorker ? `保存默认：${savedWorker.model} / ${savedWorker.reasoning_effort} · ${$('settings-source').textContent}。设置不确认运行时身份。` : '默认尚未保存；选择预设不会自动保存或启动模型。';
   $('reset-inherit').hidden = (state?.scope || 'project') !== 'project' || (!state?.saved?.document && !state?.saved?.error);
   $('reset-inherit').disabled = busy || !available || conflict;
   $('refresh').disabled = busy;
@@ -121,6 +125,15 @@ async function load(mode = 'initial', scope = state?.scope) {
   finally {busy = false; render();}
 }
 function edited() {notice(conflict ? conflictMessage : '', conflict); render();}
+$('worker-preset').addEventListener('change', event => {
+  if (busy || !connected) return;
+  const preset = state?.presets?.find(p => p.id === event.target.value);
+  if (!preset) return;
+  if (preset.worker_only) draft.worker = clone(preset.selection.worker);
+  else draft = clone(preset.selection);
+  edited();
+  if (!conflict) notice('预设已填入草稿，保存后才改变默认。不启动 Planner 或 Worker；单次覆盖请在聊天提出。');
+});
 for (const role of roles) {
   $(`${role}-model`).addEventListener('change', event => {
     const selected = model(event.target.value);

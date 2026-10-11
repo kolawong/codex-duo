@@ -16,7 +16,9 @@ manual settings), then `CODEX_HOME/codex-duo/selection.json`, then setup-require
 uses the process environment override or `~/.codex`. Existing selections remain project
 overrides and are never migrated automatically. A project manual override disables automatic
 use even if global automatic is enabled; global manual disables automatic use for inheriting
-projects. Invalid files in either layer fail closed; do not silently substitute defaults.
+projects. Malformed files and invalid workflow/coordinator/Planner settings fail closed.
+At begin, Worker fields are merged before validation: valid explicit Worker values can
+replace unsupported saved Worker values without repairing or writing preferences.
 Reading and switching never write. Resetting project overrides requires explicit user action
 and matching project/global revisions; it backs up the override and restores inheritance.
 Determine the actual current chat's project cwd from trusted task/environment context;
@@ -62,9 +64,10 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
    Continue any independently authorized work in this chat with the limitation disclosed.
 2. Build the task specification internally, using `../workflow/references/contract.md`: a unique task_id,
    goal, exact allowed_paths, acceptance criteria, and meaningful tests as argv arrays.
-   Call `codex_duo_begin` with project_root, task, and invocation (`automatic` or `explicit`).
+   Call `codex_duo_begin` with project_root, task, invocation (`automatic` or `explicit`),
+   and optional `worker_override` for an explicitly requested one-task Worker choice.
    It atomically reads saved settings, prepares an internal snapshot, and returns the
-   task_path, evidence_root, worker parameters, and max_worker_turns. This is preparation,
+   task_path, evidence_root, effective worker parameters, worker_summary and max_worker_turns. This is preparation,
    not an execution receipt. Never ask the user to edit/copy this snapshot.
 3. Read the actual native tool capacity (worker slots available to THIS parent task in total,
    including its reserved/running workers, excluding the coordinator and other tasks). Never
@@ -78,16 +81,19 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
    The service persists the plan and concrete contracts without launching any model.
 4. Immediately before EVERY initial native spawn or correction/follow-up, call codex_duo_reserve
    with project_root, handoff_id, workstream_id and current confirmed host_capacity. The
-   returned reservation contains exact saved model/effort, task_path, distinct evidence_root,
+   returned reservation contains exact immutable task model/effort, task_path, distinct evidence_root,
    dispatch_id (returned as id), and remaining_worker_turns. Respect the saved
    max_parallel_workers (1/2/3, missing legacy value means 1), actual host capacity, ready
    dependencies, and remaining TOTAL parent max_worker_turns. Parallel dispatch only when
    both independent ownership and slots permit. Wait/complete existing workers before
    dispatching dependencies. The durable ledger counts every reservation, including failed
    spawns; no refunds, per-child budgets or new task IDs to reset correction counts.
-5. Start supported native workers with the returned model/effort and fresh context
+5. Start supported native workers with the returned model/effort, the actual
+   `agent_type=codex_duo_worker` role selector, and fresh context
    (fork_context=false or the documented equivalent). Map parameters to the actual tool;
-   never pass unsupported keys or use named agents that override the saved model. Provide
+   never pass unsupported keys or use task_name as a role selector. Confirm the native
+   schema supports the role, model and effort before reserving or spawning; never probe
+   availability with another model call or use a fixed-model role as a substitute. Provide
    project cwd, task_path, evidence_root, full bounded instructions, result contract and
    references. Workers preserve other agents' edits, must not recurse, spawn children,
    change immutable contracts, or call codex_duo_begin for themselves. Do not create user-owned
@@ -101,6 +107,12 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
    Evidence failure does not authorize retries: an explicit one-dispatch cap remains binding.
 6. For each reservation call codex_duo_complete with project_root, handoff_id, dispatch_id,
    native_receipt (actual native ID or failure receipt) and outcome completed/failed/blocked/cancelled.
+   After a successful spawn, also pass `native_dispatch={tool,agent_id,parameters,runtime?}`.
+   parameters contains the successful call's exact agent_type, model, reasoning_effort and
+   fork_turns; agent_id must match native_receipt. runtime contains ONLY model/effort fields
+   actually returned by the host, never configuration or a Worker's self-report. Omit missing
+   fields; an agent ID alone confirms neither model nor effort. Omit native_dispatch for an
+   unconfirmed/failed spawn. MCP checks consistency, not independent host authentication.
    completed verifies that child's contract and hashes before releasing dependencies. If
    evidence fails, independently inspect it; record failed/blocked to release the slot and
    reserve a correction within the same total budget. A correction invalidates prior child
@@ -143,6 +155,7 @@ an absolute project root (it performs no inference):
 
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py defaults --project-root <root>`
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py begin --project-root <root> --task <internally-written-task.json> --invocation automatic`
+  Optional one-task flags: `--worker-model gpt-6-luna --worker-effort low` (either field may be omitted).
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py plan --project-root <root> --handoff-id <id> --host-capacity <total slots> [--workstreams <internal.json>]`
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py reserve --project-root <root> --handoff-id <id> --host-capacity <total slots> --workstream-id <id>`
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py complete --project-root <root> --handoff-id <id> --dispatch-id <id> --native-receipt <actual receipt> --outcome <completed|failed|blocked>`
@@ -170,11 +183,38 @@ keep its original ledger and consumed budget; do not create a new task ID to sta
 Saved max_worker_turns is an upper bound: an explicit one-call test authorization is
 stricter, even when the saved preference allows more. Preserve the original one-call cap.
 
-begin has no request-level coordinator/model override. current_thread uses the current
+begin has no request-level coordinator override. current_thread uses the current
 chat and leaves the saved selected-coordinator pair inactive. A project override wins
 over global defaults. The MCP stores project/snapshot/dispatch identities, not a trusted
 host thread binding; configuration and task names cannot attest the actual coordinator
 or native role. Use the actual native tool schema and receipts for that evidence.
+
+## Light tasks and one-task Worker overrides
+
+For “这次用 Luna low，完成后下次仍用默认”, call the actual begin tool with
+`worker_override={"model":"gpt-6-luna","reasoning_effort":"low"}`. Do not call save/settings_update.
+Each field resolves: explicit task value > project preference > global default, then the
+final pair is validated. Omitted fields inherit, with no automatic effort adjustment or
+model upgrade/downgrade. A new task with no override uses saved defaults again. Do not
+classify task difficulty or launch an extra Planner; independent read-only planning still
+requires its own explicit request. The settings “轻任务” preset fills only the Worker draft
+with Luna low; it changes persistent defaults only after an explicit Save.
+
+begin persists the override, effective pair and per-field sources in its immutable snapshot.
+Reuse the same task_id and identical override for a repeated request. Changed task or override
+parameters are a conflict, even before dispatch; do not replace task IDs to replenish budgets.
+Later settings changes and restarts cannot change an existing task. Legacy snapshots stay intact.
+
+Briefly show worker_summary: requested pair and sources, successful dispatch parameters if
+provided, and host runtime model/effort if provided. Missing runtime fields must read “未提供”.
+Config, model catalogs, reservations, hashes and offline checks cannot confirm runtime identity.
+Complete/verify return dispatch_summaries with these three evidence levels kept separate.
+
+After changing this feature, verify the current chat's begin schema exposes worker_override
+and complete exposes native_dispatch, and loaded code matches the implementation. If the chat
+still has old schemas/code, stop real acceptance and explain update/reopen steps. Do not use a
+helper or old API to pretend the new normal tool entry was tested. A one-call authorization
+is a hard cap including uncertain dispatches: no retries or failed-record repair.
 
 ## Global setup and project compatibility
 
@@ -273,3 +313,24 @@ The coordinator prepares its --request/--planner files internally; planner_run t
 Do not instruct users to assemble JSON or claim offline fixtures are real model execution.
 
 #
+
+## Test argv escaping
+
+Execute reviewed tests using the JSON-decoded argv array directly with
+`subprocess.run(argv, shell=False)`. Decode JSON once; never use `unicode_escape`,
+replace backslash sequences, interpolate argv into shell/Python source, or rebuild
+`python -c` strings. Log the actual executed argv (JSON serialization is suitable)
+and actual exit code; do not copy contract argv over transformed execution evidence.
+Failure remains failure and preflight rules remain mandatory.
+
+Prefer a standalone assertion script over nested shell / `python -c` quoting.
+For a new authorized task requiring exactly `after` plus LF, use this argv:
+
+```json
+["python3", "-B", "plugins/codex-duo/skills/workflow/scripts/assert_bytes.py", "evidence/example/probe.txt", "61667465720a"]
+```
+
+Run from the explicit project root (or use reviewed absolute script/file paths).
+The script reads only the selected file and returns nonzero for mismatched bytes,
+missing files or invalid hex. Review scope before execution. It does not write
+logs/results, dispatch workers, accept evidence or alter historical contracts.

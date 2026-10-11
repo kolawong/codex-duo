@@ -213,6 +213,21 @@ for(const transport of ['mcp','http']) {
 console.log('Panel behavior checks passed. Browser appearance and native execution are separate acceptance gates.');
 
 for (const transport of ['mcp','http']) {
+  const presetState = snapshot();
+  presetState.presets = [{id:'light',name:'轻任务',worker_only:true,selection:{coordinator:{model:'unused',reasoning_effort:'ultra'},worker:{model:'small',reasoning_effort:'low'}}}];
+  const presetUI = await harness(transport,presetState);
+  const summaryBefore = presetUI.control('worker-default-summary').textContent;
+  await presetUI.fire('worker-preset','change','light');
+  assert.equal(presetUI.control('worker-model').value,'small');
+  assert.equal(presetUI.control('worker-effort').value,'low');
+  assert.equal(presetUI.control('coordinator-model').value,'planner');
+  assert.equal(presetUI.control('planner-mode').value,'disabled');
+  assert.equal(presetUI.control('max-worker-turns').value,'3');
+  assert.equal(presetUI.control('worker-default-summary').textContent,summaryBefore,'unsaved preset is not a new saved default');
+  assert.equal(presetUI.calls.filter(call=>call.path==='/api/selection').length,0,'preset does not auto-save');
+  assert.ok(summaryBefore.includes('设置不确认运行时身份'));
+  await presetUI.fire('restore'); await presetUI.fire('discard-confirm');
+  assert.equal(presetUI.control('worker-model').value,'executor');
   const legacy=snapshot(); delete legacy.workflow.max_parallel_workers; delete legacy.saved.document.workflow.max_parallel_workers;
   const h=await harness(transport,legacy);
   assert.equal(h.control('max-parallel-workers').value,'1');

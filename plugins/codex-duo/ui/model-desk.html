@@ -71,8 +71,10 @@
       <legend class="sr-only">Codex Duo 默认配置</legend>
       <section class="section" aria-labelledby="worker-heading">
         <h2 id="worker-heading">执行代理</h2>
+        <div class="field-row"><label for="worker-preset">预设</label><select id="worker-preset"><option value="">选择预设（未保存）</option></select></div>
         <div class="card"><div class="field-row"><label for="worker-model"><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx=".5"/><path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3"/></svg></span>模型</label><select id="worker-model" aria-describedby="worker-description"></select></div><div class="divider"></div><div class="field-row"><label for="worker-effort"><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 0 0-5.7-1.3A4 4 0 0 0 3 8a4 4 0 0 0-1 6.6A4 4 0 0 0 6 20a3 3 0 0 0 6-1V5Zm0 0a3 3 0 0 1 5.7-1.3A4 4 0 0 1 21 8a4 4 0 0 1 1 6.6A4 4 0 0 1 18 20a3 3 0 0 1-6-1M6 4c0 2 1 3 2 3M3 8c1 0 3 1 3 3m-3 5c1-2 3-2 4-1m11-11c0 2-1 3-2 3m5 1c-1 0-3 1-3 3m3 5c-1-2-3-2-4-1"/></svg></span>推理强度</label><div class="effort-control"><span id="worker-meter" class="effort-meter" aria-hidden="true"></span><select id="worker-effort"></select></div></div></div>
-        <p class="footnote">当前聊天把任务交给它完成，再由聊天验收结果。</p><p class="sr-only" id="worker-description"></p>
+        <p class="footnote" id="worker-default-summary"></p>
+        <p class="footnote">单次使用可在聊天说「这次用 Luna low，下次仍用默认」。任务摘要显示本次来源与宿主确认情况。</p><p class="sr-only" id="worker-description"></p>
       </section>
       <section class="section" aria-labelledby="activation-heading">
         <h2 id="activation-heading">启用方式</h2>
@@ -250,6 +252,10 @@ function render() {
   $('project-note').hidden = !projectScope;
   $('global-scope-note').hidden = projectScope;
   $('settings-source').textContent = state?.source === 'project' ? '项目独立设置' : state?.source === 'global' ? (state?.scope === 'project' ? '继承全局默认' : '已保存的全局默认') : '未配置';
+  $('worker-preset').replaceChildren(new Option('选择预设（未保存）', ''));
+  for (const preset of state?.presets || []) $('worker-preset').add(new Option(preset.name, preset.id));
+  const savedWorker = saved?.selection?.worker;
+  $('worker-default-summary').textContent = savedWorker ? `保存默认：${savedWorker.model} / ${savedWorker.reasoning_effort} · ${$('settings-source').textContent}。设置不确认运行时身份。` : '默认尚未保存；选择预设不会自动保存或启动模型。';
   $('reset-inherit').hidden = (state?.scope || 'project') !== 'project' || (!state?.saved?.document && !state?.saved?.error);
   $('reset-inherit').disabled = busy || !available || conflict;
   $('refresh').disabled = busy;
@@ -328,6 +334,15 @@ async function load(mode = 'initial', scope = state?.scope) {
   finally {busy = false; render();}
 }
 function edited() {notice(conflict ? conflictMessage : '', conflict); render();}
+$('worker-preset').addEventListener('change', event => {
+  if (busy || !connected) return;
+  const preset = state?.presets?.find(p => p.id === event.target.value);
+  if (!preset) return;
+  if (preset.worker_only) draft.worker = clone(preset.selection.worker);
+  else draft = clone(preset.selection);
+  edited();
+  if (!conflict) notice('预设已填入草稿，保存后才改变默认。不启动 Planner 或 Worker；单次覆盖请在聊天提出。');
+});
 for (const role of roles) {
   $(`${role}-model`).addEventListener('change', event => {
     const selected = model(event.target.value);

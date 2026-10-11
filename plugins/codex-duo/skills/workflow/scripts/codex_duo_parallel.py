@@ -7,6 +7,7 @@ import tempfile
 from codex_duo_completion import completion_view
 from codex_duo import verify as verify_evidence, EvidenceError
 from codex_duo_selection import SelectionError, canonical, digest, validate_task
+from codex_duo_worker import worker_summary, validate_native_dispatch
 
 
 class ParallelExecution:
@@ -118,6 +119,11 @@ class ParallelExecution:
         return {'completion': completion_view('worker', self.parent['handoff_id'], ledger['dispatches'],
                 str(self.store.directory.parent.resolve())),
             'handoff_id': self.parent['handoff_id'], 'workstreams': ledger['workstreams'],
+            'worker': self.parent['worker'],
+            'worker_summary': worker_summary(self.parent['worker'], self.parent.get('worker_resolution')),
+            'dispatch_summaries': [{'dispatch_id': d['id'], 'native_receipt': d.get('native_receipt'),
+                **worker_summary(self.parent['worker'], self.parent.get('worker_resolution'), d.get('native_dispatch'))}
+                for d in ledger['dispatches']],
             'dispatch_count': len(ledger['dispatches']),
             'remaining_worker_turns': remaining, 'active_dispatches': active,
             'completed_workstreams': sorted(completed),
@@ -164,7 +170,9 @@ class ParallelExecution:
             if json.loads(self.safe(task_path).read_text()) != stream['task']:
                 raise SelectionError('invalid_dispatch', '子任务契约已变化。', 409)
             self.safe(evidence).mkdir(parents=True, exist_ok=False)
-            record = {'id': dispatch_id, 'workstream_id': sid, 'status': 'reserved', 'native_receipt': None}
+            record = {'id': dispatch_id, 'workstream_id': sid, 'status': 'reserved', 'native_receipt': None,
+                      'requested_worker': self.parent['worker'],
+                      'worker_resolution': self.parent.get('worker_resolution')}
             ledger['current_host_capacity'] = capacity
             ledger['dispatches'].append(record); self.write(self.path, ledger)
             helper = str(Path(__file__).with_name('codex_duo.py').resolve())
@@ -172,6 +180,7 @@ class ParallelExecution:
             command_root = evidence.resolve()
             command_task = str(task_path.resolve())
             return {**record, 'worker': self.parent['worker'], 'task': stream['task'],
+                'worker_summary': worker_summary(self.parent['worker'], self.parent.get('worker_resolution')),
                 'task_path': str(task_path), 'evidence_root': str(evidence),
                 'evidence_commands': {
                     'snapshot_before_edit': ['python3', '-B', helper, 'snapshot', '--task', command_task,
@@ -181,7 +190,7 @@ class ParallelExecution:
                     'preflight_result': ['python3', '-B', helper, 'verify', '--task', command_task,
                         '--result', str(command_root / 'result.json'), '--root', str(command_root)]},
                 'remaining_worker_turns': self.parent['max_worker_turns'] - len(ledger['dispatches']),
-                'execution_started': False, 'instruction': 'Spawn the saved native model only. Preserve other workers edits. '
+                'execution_started': False, 'instruction': 'Spawn this immutable task Worker with agent_type=codex_duo_worker only. Preserve other workers edits. '
                     'No recursion, no child budget; return result.json and scoped evidence. A reservation is not an execution receipt. '
                     'Forward evidence_commands to the Worker. Capture snapshot_before_edit BEFORE editing; '
                     'use diff_after_edit for canonical --- a/path, +++ b/path headers (or /dev/null), '
@@ -194,17 +203,22 @@ class ParallelExecution:
             raise SelectionError('native_receipt_required', '记录实际原生派发返回的执行代理 ID 或失败回执。')
         if body.get('outcome') not in ('completed', 'failed', 'blocked', 'cancelled'):
             raise SelectionError('invalid_outcome', '需要执行完成、失败或阻塞状态。')
+        native_dispatch = validate_native_dispatch(body.get('native_dispatch'), self.parent['worker'], receipt)
         with self.store.lock:
             ledger = self.read()
             record = next((d for d in ledger['dispatches'] if d['id'] == body.get('dispatch_id')), None)
             if record is None:
                 raise SelectionError('invalid_dispatch', '派发不存在。', 409)
-            submission = digest({k: body.get(k) for k in ('dispatch_id', 'outcome', 'native_receipt')})
+            submission_body = {k: body.get(k) for k in ('dispatch_id', 'outcome', 'native_receipt')}
+            if native_dispatch is not None:
+                submission_body['native_dispatch'] = native_dispatch
+            submission = digest(submission_body)
             replay = record['status'] != 'reserved'
             # Legacy terminal records are recognizable without rewriting their ledger.
             prior_outcome = 'completed' if record['status'] in ('verified', 'superseded') else record['status']
             if replay and (record.get('native_receipt') != receipt or prior_outcome != body['outcome'] or
-                           record.get('submission_sha256', submission) != submission):
+                           record.get('submission_sha256', submission) != submission or
+                           record.get('native_dispatch') != native_dispatch):
                 raise SelectionError('invalid_dispatch', '已结束派发不能被另一份回执覆盖。', 409)
             if body['outcome'] == 'completed':
                 stream = next(s for s in ledger['workstreams'] if s['id'] == record['workstream_id'])
@@ -223,6 +237,8 @@ class ParallelExecution:
             if replay: return self.view(ledger)
             record['submission_sha256'] = submission
             record['native_receipt'] = receipt
+            if native_dispatch is not None:
+                record['native_dispatch'] = native_dispatch
             self.write(self.path, ledger)
             return self.view(ledger)
 
@@ -253,5 +269,7 @@ class ParallelExecution:
         except (EvidenceError, OSError, ValueError, TypeError, KeyError) as exc:
             raise SelectionError('evidence_rejected', str(exc), 409) from exc
         return {**verdict, 'verified_workstreams': len(ledger['workstreams']),
+            'worker_summary': self.view(ledger)['worker_summary'],
+            'dispatch_summaries': self.view(ledger)['dispatch_summaries'],
             'dispatch_count': len(ledger['dispatches']), 'requires_coordinator_review': True,
             'provenance': 'Receipts are coordinator-supplied; hashes validate consistency, not native model provenance.'}

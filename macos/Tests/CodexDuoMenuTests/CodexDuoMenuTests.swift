@@ -33,6 +33,31 @@ final class StubService: CodexDuoServing {
 }
 
 final class CodexDuoMenuTests: XCTestCase {
+    @MainActor func testLightPresetIsDraftOnlyAndPreservesPlannerCoordinatorAndBudget() async throws {
+        var response = try state()
+        response.catalog?.models.append(ModelOption(id: "gpt-6-luna", name: "Luna", description: "", efforts: ["low"], defaultEffort: "low"))
+        let raw = #"{"id":"light","name":"轻任务","worker_only":true,"selection":{"coordinator":{"model":"unused","reasoning_effort":"high"},"worker":{"model":"gpt-6-luna","reasoning_effort":"low"}}}"#
+        let preset = try JSONDecoder().decode(WorkerPreset.self, from: Data(raw.utf8))
+        response.presets = [preset]
+        let service = StubService(response)
+        let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+        await store.refresh()
+        let before = store.draft!
+        let summary = store.workerDefaultSummary
+        XCTAssertEqual(store.presets.count, 1)
+        XCTAssertFalse(store.isDirty)
+        store.applyPreset(preset)
+        XCTAssertEqual(store.draft?.selection.worker, ModelChoice(model: "gpt-6-luna", reasoningEffort: "low"))
+        XCTAssertEqual(store.draft?.selection.coordinator, before.selection.coordinator)
+        XCTAssertEqual(store.draft?.workflow, before.workflow)
+        XCTAssertEqual(store.workerDefaultSummary, summary)
+        XCTAssertNil(service.sent)
+        XCTAssertTrue(store.canSave)
+        await store.refresh(discardDraft: true)
+        XCTAssertEqual(store.draft, before)
+        XCTAssertFalse(store.isDirty)
+    }
+
     @MainActor func testParallelLimitLegacyDefaultDraftValidationAndSave() async throws {
         let service = StubService(try state())
         let store = SettingsStore(projectRoot: "/isolated/project", client: service)

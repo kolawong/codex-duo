@@ -45,6 +45,17 @@ struct Selection: Codable, Equatable {
     var worker: ModelChoice
 }
 
+struct WorkerPreset: Decodable, Identifiable {
+    var id: String
+    var name: String
+    var selection: Selection
+    var workerOnly: Bool? = nil
+    enum CodingKeys: String, CodingKey {
+        case id, name, selection
+        case workerOnly = "worker_only"
+    }
+}
+
 struct Workflow: Codable, Equatable {
     var activation: String
     var coordinatorMode: String
@@ -126,6 +137,7 @@ struct SavedLayers: Decodable {
 }
 
 struct ServiceState: Decodable {
+    var presets: [WorkerPreset]? = nil
     var scope: String? = nil
     var source: String? = nil
     var globalRevision: String? = nil
@@ -139,7 +151,7 @@ struct ServiceState: Decodable {
     var projectOptIn: ProjectOptIn? = nil
     var projectRoot: String?
     enum CodingKeys: String, CodingKey {
-        case catalog, saved, workflow, error, scope, source, effective, layers
+        case catalog, saved, workflow, error, scope, source, effective, layers, presets
         case globalRevision = "global_revision"
         case projectOptIn = "project_opt_in"
         case defaultSelection = "default"

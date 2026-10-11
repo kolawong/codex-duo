@@ -15,7 +15,7 @@ rm -rf "$APP/Contents/Resources/Brand"
 cp -R "$MACOS_DIR/Sources/CodexDuoMenu/Resources/Brand" "$APP/Contents/Resources/Brand"
 # Generated from the exact SVG used by the title header; never use a stale ICNS.
 cp "$MACOS_DIR/Assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-for name in codex_duo.py codex_duo_selection.py codex_duo_service.py codex_duo_projects.py codex_duo_defaults.py codex_duo_parallel.py codex_duo_planner.py codex_duo_planner_session.py codex_duo_migration.py codex_duo_completion.py; do
+for name in codex_duo.py codex_duo_selection.py codex_duo_service.py codex_duo_projects.py codex_duo_defaults.py codex_duo_parallel.py codex_duo_planner.py codex_duo_planner_session.py codex_duo_migration.py codex_duo_completion.py codex_duo_worker.py; do
     cp "$PROJECT_ROOT/plugins/codex-duo/skills/workflow/scripts/$name" "$APP/Contents/Resources/workflow/scripts/$name"
 done
 cp "$PROJECT_ROOT/plugins/codex-duo/skills/workflow/templates/task.json" "$APP/Contents/Resources/workflow/templates/task.json"

@@ -4,6 +4,23 @@ Task JSON contains schema_version=1, task_id, goal, allowed_paths, acceptance,
 and tests (an array of argv arrays). Tests must be selected by the coordinator;
 never execute arbitrary task argv without reviewing scope and approval.
 
+begin accepts a separate optional `worker_override` object with model and/or reasoning_effort.
+It is not part of task JSON and cannot change the coordinator, Planner, scope or budget.
+Each field merges over project then global defaults before the resulting pair is validated.
+The immutable handoff includes `worker_resolution={override,sources}` and the effective Worker
+selection. Same task_id + same contract/override reuses that snapshot and ledger after restarts
+or settings changes; conflicting requests fail instead of creating another budget.
+
+reserve.worker is the dispatch contract: use the actual native codex_duo_worker role,
+its exact model/effort and fork_turns=none. The reservation is not proof of execution.
+complete may attach `native_dispatch={tool,agent_id,parameters,runtime?}`, where parameters
+are the successful native call's model, reasoning_effort, agent_type and fork_turns, and
+runtime contains only host-returned model/effort fields (omit absent fields). The agent_id
+must equal native_receipt. Reports are coordinator-transcribed, not MCP-authenticated telemetry.
+worker_summary / dispatch_summaries distinguish requested, successful_dispatch and runtime;
+missing runtime fields remain not_provided even with a valid agent ID or matching config.
+Identical completion is idempotent; changed terminal evidence or identity is rejected.
+
 Worker result JSON contains schema_version=1, task_id, status (completed, failed,
 or blocked), summary (at most 280 characters), changed_paths, diff (artifact),
 tests (argv, exit_code, log artifact), and blockers (short strings).
@@ -85,3 +102,24 @@ receipts are supplied by the coordinator; data validation does not prove provena
 or intercept calls that bypass the adapter. MCP never starts a model.
 Missing legacy max_parallel_workers resolves to 1 without rewriting settings. Legacy
 immutable handoffs retain their original workflow serialization and artifact hashes.
+
+## Test argv escaping
+
+Execute reviewed tests using the JSON-decoded argv array directly with
+`subprocess.run(argv, shell=False)`. Decode JSON once; never use `unicode_escape`,
+replace backslash sequences, interpolate argv into shell/Python source, or rebuild
+`python -c` strings. Log the actual executed argv (JSON serialization is suitable)
+and actual exit code; do not copy contract argv over transformed execution evidence.
+Failure remains failure and preflight rules remain mandatory.
+
+Prefer a standalone assertion script over nested shell / `python -c` quoting.
+For a new authorized task requiring exactly `after` plus LF, use this argv:
+
+```json
+["python3", "-B", "plugins/codex-duo/skills/workflow/scripts/assert_bytes.py", "evidence/example/probe.txt", "61667465720a"]
+```
+
+Run from the explicit project root (or use reviewed absolute script/file paths).
+The script reads only the selected file and returns nonzero for mismatched bytes,
+missing files or invalid hex. Review scope before execution. It does not write
+logs/results, dispatch workers, accept evidence or alter historical contracts.

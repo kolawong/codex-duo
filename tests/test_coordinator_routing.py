@@ -95,6 +95,7 @@ class CoordinatorRoutingTests(unittest.TestCase):
     def test_global_inheritance_and_project_override_route_independently(self):
         for global_mode, project_mode in [('selected_model', 'current_thread'), ('current_thread', 'selected_model')]:
             with self.subTest(global_mode=global_mode):
+                self.task['task_id'] = 'routing-' + global_mode
                 global_store = self.service.defaults_store.global_store
                 global_revision = global_store.read(catalog())['revision']
                 self.save(scope='global', expected_revision=global_revision,

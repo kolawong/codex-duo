@@ -1,4 +1,4 @@
-# Codex Duo 0.9.8 本地插件更新
+# Codex Duo 本地插件官方更新流程
 
 活动插件身份统一为 `codex-duo@codex-duo-local`，MCP 标识为 `codex-duo`，工具为 `codex_duo_*`，角色为 `codex_duo_worker` / `codex_duo_planner`。唯一技能入口是 `$codex-duo`。独立 Planner 仍由官方 app-server 的受限 Local 会话执行，Worker 仍使用原生路径。
 
@@ -24,4 +24,9 @@ bash macos/build.sh
 
 完成模式设置、手动完成列表/复制提示及唤醒专用工具已移除。主聊天等待原生 Worker 并继续验收；只读 Planner、统一预算、取消/完成幂等、规范 diff 快照/生成/预检和现有界面修复保留。旧配置读取有效模式统一 return，不自动写盘。显式设置迁移入口：`codex_duo_workflow.py migrate_completion --project-root <实际项目> --scope project|global --expected-revision <当前hash>`，只改保存偏好并备份原字节，不更改旧任务。
 
-仍使用官方本地 marketplace 更新：`codex plugin add codex-duo@codex-duo-local --json`。Python 3.11+ 用于完整测试；更新后核对源码与缓存 hash。0.9.8 只修复两份 manifest 的 `logo` / `composerIcon` 为 `./assets/tandem.png`：宿主会忽略缺少 `./` 前缀的资源引用。现有双环 PNG 不变。App 保持 `macos/dist/Codex Duo.app`，版本 0.9.7 / build 16，本轮不重建或打开应用。官方注册/文件核验不能证明页面已刷新；用户可正常重新载入插件后检查详情大图标与「立即试用」示例。证据见 `evidence/plugin-display-icon-fix/REPORT.md`，此前图标生成及原流程清理记录保留于 `evidence/icon-unification/REPORT.md`、`evidence/return-flow-cleanup/REPORT.md`。
+仍使用官方本地 marketplace 更新：`codex plugin add codex-duo@codex-duo-local --json`。Python 3.11+ 用于完整测试；更新后核对源码与缓存 hash。0.9.8 修复两份 manifest 的 `logo` / `composerIcon` 为 `./assets/tandem.png`：宿主会忽略缺少 `./` 前缀的资源引用。现有双环 PNG 不变。App 保持 `macos/dist/Codex Duo.app`，版本 0.9.7 / build 16，本轮不重建或打开应用。官方注册/文件核验不能证明页面已刷新；用户可正常重新载入插件后检查详情大图标与「立即试用」示例。证据见 `evidence/plugin-display-icon-fix/REPORT.md`，此前图标生成及原流程清理记录保留于 `evidence/icon-unification/REPORT.md`、`evidence/return-flow-cleanup/REPORT.md`。
+
+
+### 0.9.9 Worker argv 指导与字节断言
+
+Worker 测试应将 JSON argv 单次解码后原样传给 `subprocess.run(argv, shell=False)`。新增只读字节断言脚本，避免嵌套 shell 与 Python 字符串转义。

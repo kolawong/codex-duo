@@ -17,6 +17,8 @@ def main():
         if command == 'begin':
             sub.add_argument('--task', type=Path, required=True)
             sub.add_argument('--invocation', choices=['automatic', 'explicit'], required=True)
+            sub.add_argument('--worker-model')
+            sub.add_argument('--worker-effort')
     sub = commands.add_parser('migrate_completion', help='Explicit saved-settings migration to return; never edits tasks')
     sub.add_argument('--project-root', type=Path, required=True)
     sub.add_argument('--scope', choices=['project', 'global'], required=True)
@@ -31,6 +33,7 @@ def main():
         if command == 'complete':
             sub.add_argument('--dispatch-id', required=True)
             sub.add_argument('--native-receipt', required=True)
+            sub.add_argument('--native-dispatch', type=Path)
             sub.add_argument('--outcome', choices=['completed', 'failed', 'blocked', 'cancelled'], required=True)
     for command in ('planner_begin', 'planner_reserve', 'planner_complete', 'planner_status', 'planner_run', 'planner_stop'):
         sub = commands.add_parser(command)
@@ -61,12 +64,16 @@ def main():
         if args.command == 'defaults':
             result = service.defaults(str(args.project_root))
         elif args.command == 'begin':
+            override = {k: v for k, v in {'model': args.worker_model,
+                        'reasoning_effort': args.worker_effort}.items() if v is not None}
             result = service.begin({'project_root': str(args.project_root),
-                'task': json.loads(args.task.read_text()), 'invocation': args.invocation})
+                'task': json.loads(args.task.read_text()), 'invocation': args.invocation,
+                **({'worker_override': override} if override else {})})
         else:
             body = {key: value for key, value in vars(args).items() if key != 'command' and value is not None}
             body['project_root'] = str(args.project_root)
             if body.get('workstreams'): body['workstreams'] = json.loads(body['workstreams'].read_text())
+            if body.get('native_dispatch'): body['native_dispatch'] = json.loads(body['native_dispatch'].read_text())
             if args.command == 'migrate_completion':
                 result = service.defaults_store.store(args.scope).migrate_completion(args.expected_revision)
             elif args.command.startswith('planner_'):

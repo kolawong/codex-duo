@@ -209,11 +209,20 @@ struct SettingsView: View {
     private var settings: some View {
         let automatic = draft?.workflow.activation == "automatic_project"
         return VStack(alignment: .leading, spacing: 16) {
-            PanelSection(title: "执行代理", footnote: "当前聊天把任务交给它完成，再由聊天验收结果。") {
+            PanelSection(title: "执行代理", footnote: "单次可在聊天说「这次用 Luna low，下次仍用默认」。任务摘要显示本次来源与宿主确认；设置不确认运行时身份。") {
+                if !store.presets.isEmpty {
+                    Menu("选择预设（未保存）") {
+                        ForEach(store.presets) { preset in
+                            Button(preset.name) { store.applyPreset(preset) }
+                        }
+                    }
+                    .disabled(store.isBusy)
+                }
                 Card {
                     ModelFields(choice: choice(coordinator: false), baseline: baseline?.selection.worker,
                                 catalog: store.catalog)
                 }
+                Text(store.workerDefaultSummary).font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             PanelSection(title: "启用方式", footnote: "首次执行和每次修正各算一次；用完后停止，并说明还剩哪些工作。") {
                 Card {

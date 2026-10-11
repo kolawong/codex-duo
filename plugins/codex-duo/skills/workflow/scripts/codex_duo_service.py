@@ -4,7 +4,8 @@ from pathlib import Path
 from codex_duo_defaults import Defaults
 from codex_duo_projects import project_path, opt_in_status, enable_and_save, instructions
 from codex_duo_selection import (SelectionError, SelectionStore, read_catalog, default_selection,
-                              presets, prepare_handoff, digest, validate_selection, saved_workflow, validate_workflow)
+                              presets, prepare_handoff, digest, validate_selection, saved_workflow, validate_workflow, validate_task)
+from codex_duo_worker import validate_override, worker_summary
 
 
 class CodexDuoService:
@@ -104,23 +105,63 @@ class CodexDuoService:
     def begin(self, body):
         """Resolve current defaults and create the internal task snapshot in one step."""
         self.check_project(body.get('project_root'))
+        task = validate_task(body.get('task'))
+        override = validate_override(body['worker_override']) if 'worker_override' in body else {}
+        invocation = body.get('invocation')
+        if invocation not in ('automatic', 'explicit'):
+            raise SelectionError('invalid_invocation', '请说明由项目默认流程还是用户明确要求启用。')
         with self.defaults_store.global_store.lock, self.store.lock:
+            # Resolve identity before today's defaults: retries keep their immutable
+            # choice and budget even after a settings change or service restart.
+            existing = self.existing_task(task, override)
+            if existing:
+                return self.begin_view(existing, False)
             catalog = self.catalog_loader()
-            saved = self.defaults_store.resolved(catalog)['effective']
-            if not saved['document']:
-                raise SelectionError('setup_required', '请先完成一次 Codex Duo 配置。已有无效配置时请恢复。', 409)
+            saved, selection, resolution = self.defaults_store.for_task(catalog, override)
             workflow = saved_workflow(saved['document'])
-            invocation = body.get('invocation')
-            if invocation not in ('automatic', 'explicit'):
-                raise SelectionError('invalid_invocation', '请说明由项目默认流程还是用户明确要求启用。')
             if invocation == 'automatic' and workflow['activation'] != 'automatic_project':
                 raise SelectionError('manual_mode', '当前为手动模式，仅在用户要求使用 Codex Duo 时启用。', 409)
-            prepared = prepare_handoff(body.get('task'), saved['document']['selection'], catalog,
-                                       self.store.directory / 'handoffs', saved['revision'], workflow)
-            plan = self.execution_plan(prepared['id'])
-            return {**plan, 'handoff_path': prepared['path'], 'created': prepared['created'],
-                    'evidence_root': str(self.store.directory / 'runs' / prepared['id']),
-                    'task_path': str(Path(prepared['path']) / 'task.json')}
+            prepared = prepare_handoff(task, selection, catalog, self.store.directory / 'handoffs',
+                                       saved['revision'], workflow, worker_resolution=resolution)
+            return self.begin_view(prepared['id'], prepared['created'])
+
+    def begin_view(self, identifier, created):
+        path = self.store.directory / 'handoffs' / identifier
+        return {**self.execution_plan(identifier), 'handoff_path': str(path), 'created': created,
+                'evidence_root': str(self.store.directory / 'runs' / identifier),
+                'task_path': str(path / 'task.json')}
+
+    def existing_task(self, task, override):
+        """Project lock held. Preserve old records; no new ledger for an existing ID."""
+        root = self.store.directory / 'handoffs'
+        if root.is_symlink():
+            raise SelectionError('unsafe_storage', '交接目录不能是符号链接。', 409)
+        matches = []
+        for path in sorted(root.glob('*/handoff.json')):
+            if path.is_symlink() or path.parent.is_symlink():
+                raise SelectionError('unsafe_storage', '交接不能包含符号链接。', 409)
+            try:
+                manifest = json.loads(path.read_text())
+                if manifest['task']['task_id'] != task['task_id']:
+                    continue
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise SelectionError('invalid_handoff', '已有交接损坏，无法确认任务身份。', 409) from exc
+            identifier = path.parent.name
+            self.execution_plan(identifier)  # Verify original snapshot, never repair it.
+            if manifest['task'] != task:
+                raise SelectionError('task_conflict', '同一 task_id 的任务参数冲突；保留原快照与预算。', 409)
+            if 'workflow' not in manifest:
+                # Legacy prepare can enter begin only if it has never reserved.
+                ledger = self.store.directory / 'runs' / identifier / 'dispatch.json'
+                if ledger.exists() or ledger.is_symlink():
+                    raise SelectionError('task_conflict', '旧交接已有派发记录，不能新建预算。', 409)
+                continue
+            if manifest.get('worker_resolution', {}).get('override', {}) != override:
+                raise SelectionError('task_conflict', '同一 task_id 的 Worker 覆盖冲突；不能更换模型或重置预算。', 409)
+            matches.append(identifier)
+        if len(matches) > 1:
+            raise SelectionError('task_conflict', '同一 task_id 已有多个历史快照，请保留原记录并核对预算。', 409)
+        return matches[0] if matches else None
 
     def prepare(self, body):
         if 'project_root' in body: self.check_project(body['project_root'])
@@ -248,6 +289,8 @@ class CodexDuoService:
             payload = {k: manifest[k] for k in ('schema_version', 'task', 'selection', 'catalog_fingerprint', 'selection_revision')}
             if 'workflow' in manifest:
                 payload['workflow'] = manifest['workflow']
+            if 'worker_resolution' in manifest:
+                payload['worker_resolution'] = manifest['worker_resolution']
             if digest(payload)[:24] != identifier or manifest.get('handoff_id') != identifier:
                 raise ValueError('digest')
             if catalog['fingerprint'] != manifest['catalog_fingerprint']:
@@ -255,7 +298,8 @@ class CodexDuoService:
             validate_selection(manifest['selection'], catalog)
             # Existing path: verify every immutable artifact, never modify it.
             result = prepare_handoff(manifest['task'], manifest['selection'], catalog, root,
-                                     manifest['selection_revision'], manifest.get('workflow'), legacy_completion=True)
+                                     manifest['selection_revision'], manifest.get('workflow'), legacy_completion=True,
+                                     worker_resolution=manifest.get('worker_resolution'))
             if result['created']:
                 raise ValueError('missing snapshot')
         except (OSError, KeyError, TypeError, ValueError) as exc:
@@ -270,7 +314,9 @@ class CodexDuoService:
                     'execution_started': False, 'project_root': str(self.store.directory.parent.resolve()),
                     'coordinator': {'mode': workflow['coordinator_mode'], 'requires_new_task': not current,
                         'selected_model': None if current else manifest['selection']['coordinator']},
-                    'worker': {**manifest['worker_spawn_parameters'], 'fork_context': False},
+                    'worker': {**manifest['worker_spawn_parameters'], 'fork_context': False, 'agent_type': 'codex_duo_worker'},
+                    'worker_resolution': manifest.get('worker_resolution'),
+                    'worker_summary': worker_summary(manifest['selection']['worker'], manifest.get('worker_resolution')),
                     'max_worker_turns': workflow['max_worker_turns'],
                     'max_parallel_workers': workflow['max_parallel_workers'],
                     'completion_mode': workflow['completion_mode'],

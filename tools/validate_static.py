@@ -62,11 +62,8 @@ def main():
         check((skill.parent / path).is_file(), "skill resource exists: " + path)
     config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
     agent = tomllib.loads((ROOT / ".codex/agents/codex_duo_worker.toml").read_text())
-    catalog = {x["slug"]: x for x in json.loads((ROOT / "evidence/bundled-models.json").read_text())}
-    for name, data in [("coordinator", config)]:
-        check(data["model"] in catalog, name + " model appears in bundled catalog")
-        efforts = [x["effort"] for x in catalog[data["model"]]["supported_reasoning_levels"]]
-        check(data["model_reasoning_effort"] in efforts, name + " effort advertised locally")
+    check("model" not in config and "model_reasoning_effort" not in config,
+          "project config cannot override the user-selected chat model or effort")
     check(all(isinstance(agent.get(k), str) and agent[k] for k in [
         "name", "description", "developer_instructions"]), "custom agent required fields")
     check(agent["name"] == "codex_duo_worker", "custom agent name matches filename")

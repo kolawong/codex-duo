@@ -16,6 +16,19 @@ final class SettingsStore {
         }
     }
     private(set) var catalog: Catalog?
+    private(set) var presets: [WorkerPreset] = []
+    var workerDefaultSummary: String {
+        guard !needsSave, let worker = baseline?.selection.worker else { return "默认尚未保存" }
+        return "保存默认：\(worker.model) / \(worker.reasoningEffort) · \(sourceLabel)"
+    }
+
+    func applyPreset(_ preset: WorkerPreset) {
+        guard !isBusy, var value = draft else { return }
+        if preset.workerOnly == true { value.selection.worker = preset.selection.worker }
+        else { value.selection = preset.selection }
+        draft = value
+        notice = "预设已填入草稿，保存后才改变默认。不启动 Planner 或 Worker。"
+    }
     private(set) var baseline: Draft?
     private(set) var revision = "none"
     private(set) var isBusy = false
@@ -82,6 +95,7 @@ final class SettingsStore {
             let previousRoot = projectRoot
             projectRoot = canonical; client = newClient
             catalog = candidate.catalog; draft = candidate.draft; baseline = candidate.baseline
+            presets = candidate.presets
             revision = candidate.revision; needsSave = candidate.needsSave
             scope = candidate.scope; source = candidate.source; globalRevision = candidate.globalRevision
             hasProjectOverride = candidate.hasProjectOverride
@@ -132,6 +146,7 @@ final class SettingsStore {
             throw ServiceError(code: "scope_mismatch", message: "配置范围不一致，原修改已保留。")
         }
         self.catalog = catalog
+        presets = state.presets ?? []
         projectEnabled = state.projectOptIn?.enabled == true
         savedWarning = saved.error?.message ?? (incomingScope == "project" ? state.effective?.error?.message : nil)
         let incoming = Draft(selection: selection, workflow: state.workflow ?? saved.document?.workflow ?? .initial)

@@ -1,6 +1,5 @@
-# Fusion is enabled for user-requested project development; saved defaults govern each task.
-model = "gpt-6.1-sol"
-model_reasoning_effort = "high"
+# Codex Duo is enabled for user-requested project development; saved defaults govern each task.
+# The user selects the main chat model; saved Duo settings govern worker models.
 
 [agents]
 enabled = true
@@ -11,5 +10,5 @@ default_subagent_reasoning_effort = "high"
 [features]
 hooks = false
 
-[plugins."fusion-minimal@fusion-local"]
+[plugins."codex-duo@codex-duo-local"]
 enabled = true

@@ -1,7 +1,7 @@
 """Global defaults and project overrides; resolution never writes or reroutes a chat."""
 import os
 from pathlib import Path
-from codex_duo_selection import SelectionStore, SelectionError
+from codex_duo_selection import SelectionStore, SelectionError, validate_selection
 
 
 def global_directory():
@@ -35,6 +35,27 @@ class Defaults:
         if layers['effective']['error']:
             raise SelectionError('saved_config_invalid', layers['effective']['error']['message'], 409)
         return layers
+
+    def for_task(self, catalog, override):
+        """Merge each Worker field before catalog validation; never persist it."""
+        layers = {name: store.read(catalog, defer_worker_validation=True)
+                  for name, store in [('global', self.global_store), ('project', self.project)]}
+        for layer in layers.values():
+            if layer['error']:
+                raise SelectionError('saved_config_invalid', layer['error']['message'], 409)
+        source = 'project' if layers['project']['document'] else 'global'
+        saved = layers[source]
+        if not saved['document']:
+            raise SelectionError('setup_required', '请先完成一次 Codex Duo 配置。', 409)
+        worker, sources = {}, {}
+        for name, layer in layers.items():
+            if layer['document']:
+                for key, value in layer['document']['selection']['worker'].items():
+                    worker[key], sources[key] = value, name
+        for key, value in override.items():
+            worker[key], sources[key] = value, 'task_override'
+        selection = validate_selection({**saved['document']['selection'], 'worker': worker}, catalog)
+        return saved, selection, {'override': override, 'sources': sources}
 
     def reset(self, catalog, expected_revision, expected_global_revision):
         # Global first is the shared lock ordering for save, reset and snapshots.
