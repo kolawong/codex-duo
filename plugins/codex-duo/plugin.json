@@ -1,0 +1,26 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "codex-duo",
+  "version": "0.9.8",
+  "description": "Codex Duo 全局默认与项目设置，一个规划，一个执行。",
+  "author": {
+    "name": "Local prototype"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Codex Duo",
+        "shortDescription": "一个规划，一个执行",
+        "longDescription": "共享全局默认与项目独立设置；当前聊天负责规划与验收，执行代理完成任务。",
+        "developerName": "Local prototype",
+        "category": "Productivity",
+        "defaultPrompt": "Use $codex-duo: max_parallel_workers, shared total max_worker_turns. Explicit plan-only uses a read-only Planner.",
+        "capabilities": [
+          "Interactive"
+        ],
+        "logo": "./assets/tandem.png",
+        "composerIcon": "./assets/tandem.png"
+      }
+    }
+  }
+}

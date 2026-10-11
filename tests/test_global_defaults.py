@@ -7,9 +7,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from test_native import catalog, mcp
-from fusion_service import FusionService
-from fusion_selection import SelectionError
-from fusion_selection import saved_workflow
+from codex_duo_service import CodexDuoService
+from codex_duo_selection import SelectionError
+from codex_duo_selection import saved_workflow
 
 
 class GlobalDefaultsTests(unittest.TestCase):
@@ -21,8 +21,8 @@ class GlobalDefaultsTests(unittest.TestCase):
         env.start(); self.addCleanup(env.stop)
         self.a = Path(self.temp.name).resolve() / 'a'; self.a.mkdir()
         self.b = Path(self.temp.name).resolve() / 'b'; self.b.mkdir()
-        self.one = FusionService(self.a / '.fusion', catalog)
-        self.two = FusionService(self.b / '.fusion', catalog)
+        self.one = CodexDuoService(self.a / '.codex-duo', catalog)
+        self.two = CodexDuoService(self.b / '.codex-duo', catalog)
         self.selection = self.one.state()['default']
         self.workflow = {'activation':'automatic_project', 'coordinator_mode':'current_thread', 'max_worker_turns':7, 'max_parallel_workers':1}
 
@@ -38,7 +38,7 @@ class GlobalDefaultsTests(unittest.TestCase):
             self.assertEqual(value['source'],'global')
             self.assertEqual(value['workflow'],saved_workflow({'workflow': self.workflow}))
             self.assertEqual(value['revision'],saved['revision'])
-            self.assertFalse((root/'.fusion').exists())
+            self.assertFalse((root/'.codex-duo').exists())
             self.assertFalse((root/'AGENTS.md').exists())
         self.assertEqual(before,(self.home/'codex-duo/selection.json').read_bytes())
 
@@ -56,7 +56,7 @@ class GlobalDefaultsTests(unittest.TestCase):
         self.assertEqual(state['source'],'global')
         self.assertEqual(state['workflow'],saved_workflow({'workflow': self.workflow}))
         self.assertEqual(before,self.one.defaults_store.global_store.path.read_bytes())
-        self.assertTrue((self.a/'.fusion/history'/ (local['revision']+'.json')).exists())
+        self.assertTrue((self.a/'.codex-duo/history'/ (local['revision']+'.json')).exists())
 
     def test_global_manual_stops_automatic_but_local_automatic_wins(self):
         self.save(workflow={**self.workflow,'activation':'manual'})
@@ -66,7 +66,7 @@ class GlobalDefaultsTests(unittest.TestCase):
         self.save(service=self.two,scope='project')
         plan=self.two.begin({'project_root':str(self.b),'task':self.two.template,'invocation':'automatic'})
         self.assertEqual(plan['project_root'],str(self.b))
-        self.assertTrue(plan['handoff_path'].startswith(str(self.b/'.fusion/handoffs')))
+        self.assertTrue(plan['handoff_path'].startswith(str(self.b/'.codex-duo/handoffs')))
         self.assertFalse((self.home/'codex-duo/handoffs').exists())
 
     def test_global_plugin_settings_ignore_fallback_project_override(self):
@@ -107,12 +107,12 @@ class GlobalDefaultsTests(unittest.TestCase):
     def test_mcp_open_defaults_global_but_handoff_uses_explicit_chat_root(self):
         self.save()
         server=mcp.MCPServer(self.one)
-        opened=server.call('fusion.open',{'project_root':str(self.b)})['_meta']['fusion/state']
+        opened=server.call('codex_duo_open',{'project_root':str(self.b)})['_meta']['codex-duo/state']
         self.assertEqual(opened['scope'],'global');self.assertEqual(opened['project_root'],str(self.b))
-        begun=server.call('fusion.begin',{'project_root':str(self.b),'task':self.one.template,'invocation':'automatic'})['structuredContent']
+        begun=server.call('codex_duo_begin',{'project_root':str(self.b),'task':self.one.template,'invocation':'automatic'})['structuredContent']
         self.assertEqual(begun['project_root'],str(self.b))
         self.assertTrue(begun['task_path'].startswith(str(self.b)))
-        self.assertFalse((self.a/'.fusion').exists())
+        self.assertFalse((self.a/'.codex-duo').exists())
 
     def test_stale_noop_save_checks_revision(self):
         saved=self.save()

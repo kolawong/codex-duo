@@ -3,10 +3,10 @@
 This project uses the user's saved Codex Duo defaults for development tasks automatically.
 This is an explicit project preference; no slash command or repeated setup is required.
 
-- Before implementation or bug-fix work, load the `codex-duo` skill and read `fusion.defaults`
-  with the actual current chat project cwd as explicit `project_root` on every fusion.* call. Use the actual saved worker model, effort and turn limit.
-  If the plugin tools have not refreshed, read `plugins/fusion-minimal/skills/codex-duo/SKILL.md`
-  and use its local `fusion_workflow.py defaults` helper.
+- Before implementation or bug-fix work, load the `codex-duo` skill and read `codex_duo_defaults`
+  with the actual current chat project cwd as explicit `project_root` on every codex_duo_* call. Use the actual saved worker model, effort and turn limit.
+  If the plugin tools have not refreshed, read `plugins/codex-duo/skills/codex-duo/SKILL.md`
+  and use its local `codex_duo_workflow.py defaults` helper.
 - Follow the saved activation mode. `automatic_project` routes user-requested development
   through the current chat coordinator and supported native workers, bounded by saved
   parallel count, actual host capacity and shared total turn limit. `manual` requires the user
@@ -34,8 +34,8 @@ This is an explicit project preference; no slash command or repeated setup is re
 ## Codex Duo project workflow
 
 For user-requested implementation or bug fixes, load the `codex-duo` skill and read
-`fusion.defaults` with the actual current chat project directory as `project_root`.
-Pass this same explicit root to every fusion.* call; menu selection never routes chats.
+`codex_duo_defaults` with the actual current chat project directory as `project_root`.
+Pass this same explicit root to every codex_duo_* call; menu selection never routes chats.
 Resolve project overrides before global defaults. Follow saved activation:
 automatic_project uses this chat and supported native workers, bounded by saved parallel
 count, actual host capacity and shared total turn limit; simple tasks use one;

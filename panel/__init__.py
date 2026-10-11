@@ -1,1 +1,1 @@
-"""Fusion local model desk."""
+"""Codex Duo local model desk."""

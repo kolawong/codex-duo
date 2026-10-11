@@ -14,7 +14,7 @@ function snapshot(revision='r1', selected=selection) {
     {id:'executor',name:'Executor',efforts:['high','medium'],default_effort:'high'},
     {id:'small',name:'Small',efforts:['low','medium'],default_effort:'medium'}]},
     saved:{revision,document:{selection:copy(selected),workflow:copy(workflow)}},workflow:copy(workflow),default:copy(selection),
-    project_opt_in:{enabled:true,error:null},project_root:'/test/tandem',storage_path:'/test/tandem/.fusion/selection.json',csrf_token:'fixture-token'};
+    project_opt_in:{enabled:true,error:null},project_root:'/test/tandem',storage_path:'/test/tandem/.codex-duo/selection.json',csrf_token:'fixture-token'};
 }
 class Element {
   constructor(id='') {this.id=id;this.value='';this.disabled=false;this.hidden=false;this.textContent='';this.children=[];this.attributes={};this.events={};this.style={};this.className='';this.open=false;
@@ -25,6 +25,8 @@ class Element {
   append(...children){this.children.push(...children);}
   add(child){this.children.push(child);}
   addEventListener(type,handler){this.events[type]=handler;}
+  focus(){this.focused=true;}
+  select(){this.selected=true;}
   showModal(){this.open=true;}
   close(){this.open=false;}
 }
@@ -50,15 +52,15 @@ async function harness(transport='mcp', first=snapshot()) {
       async connect(){}
       getHostContext(){return {theme:"dark"};}
       async callServerTool({name,arguments:args}){
-        try {return {structuredContent:await serve(name==='fusion.state'?'/api/state'+(args.scope?'?scope='+args.scope:''):name==='fusion.reset'?'/api/reset':'/api/selection',args)};}
+        try {return {structuredContent:await serve(name==='codex_duo_state'?'/api/state'+(args.scope?'?scope='+args.scope:''):name==='codex_duo_reset'?'/api/reset':'/api/selection',args)};}
         catch(error){return {isError:true,structuredContent:{error:{message:error.message,code:error.code}}};}
       }
     };
     vm.runInContext(bridge.replace("import { App } from '@modelcontextprotocol/ext-apps';",''),context);
-    context.host.ontoolresult({_meta:{'fusion/state':copy(first)}});
+    context.host.ontoolresult({_meta:{'codex-duo/state':copy(first)}});
   } else {
     context.fetch=async(path,options)=>{
-      if(options.method==='POST'){assert.equal(options.headers['X-Fusion-Token'],'fixture-token');assert.equal(options.headers['Content-Type'],'application/json');}
+      if(options.method==='POST'){assert.equal(options.headers['X-Codex-Duo-Token'],'fixture-token');assert.equal(options.headers['Content-Type'],'application/json');}
       try {const data=await serve(path,options.body?JSON.parse(options.body):undefined);return {ok:true,json:async()=>data};}
       catch(error){return {ok:false,json:async()=>({error:{message:error.message,code:error.code}})};}
     };
@@ -223,3 +225,20 @@ for (const transport of ['mcp','http']) {
   await h.fire('discard-confirm');
   assert.equal(h.control('max-parallel-workers').value,'1');
 }
+
+
+assert.doesNotMatch(html, /completion-mode|review-inbox|复制验收提示/);
+assert.doesNotMatch(bridge, /review-prompt|codex_duo_completion|wake_on_completion/);
+for (const transport of ['mcp','http']) {
+  for (const mode of ['manual_review','wake_on_completion']) {
+    const legacy=snapshot();legacy.workflow.completion_mode=mode;
+    legacy.saved.document.workflow.completion_mode=mode;
+    const h=await harness(transport,legacy);
+    assert.equal(h.control('save').disabled,true,'old mode is ignored on read');
+    await h.fire('turns-plus');await h.fire('save');
+    assert.equal(h.latest.workflow.completion_mode,undefined,'old mode must not be saved');
+    assert.deepEqual(h.latest.saved.document.selection,selection);
+    assert.ok(h.calls.every(c=>['/api/state','/api/selection'].includes(c.path.split('?')[0])));
+  }
+}
+console.log('Return-only panel: removed controls/routes and legacy preference reads passed.');

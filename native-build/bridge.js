@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({name: 'Codex Duo settings', version: '0.7.0'},
+const app = new App({name: 'Codex Duo settings', version: '0.9.7'},
   {availableDisplayModes: ['fullscreen']}, {autoResize: true});
 let receiveInitial;
 const initial = new Promise(resolve => { receiveInitial = resolve; });
@@ -29,7 +29,7 @@ function decode(value) {
     error.code = value.structuredContent?.error?.code;
     throw error;
   }
-  const data = value._meta?.['fusion/state'] || value.structuredContent;
+  const data = value._meta?.['codex-duo/state'] || value.structuredContent;
   if (!data) throw new Error('宿主未返回面板数据，请刷新目录重试。');
   return data;
 }
@@ -46,14 +46,14 @@ async function boundedInitial() {
     return data;
   } finally {clearTimeout(timer);}
 }
-window.fusionTransport = {
+window.codexDuoTransport = {
   initial: boundedInitial,
   async request(path, body) {
     await ready;
     if (!projectRoot) await boundedInitial();
     const route = path.split('?')[0];
     const scope = path.includes('?scope=global') ? 'global' : path.includes('?scope=project') ? 'project' : undefined;
-    const name = {'/api/state': 'fusion.state', '/api/selection': 'fusion.save', '/api/reset': 'fusion.reset'}[route];
+    const name = {'/api/state': 'codex_duo_state', '/api/selection': 'codex_duo_save', '/api/reset': 'codex_duo_reset'}[route];
     if (!name) throw new Error('未支持的面板操作。');
     if (body?.project_root && body.project_root !== projectRoot) throw new Error('面板不能切换到其他项目。');
     const data = decode(await app.callServerTool({name, arguments: {...body, ...(scope ? {scope} : {}), project_root: projectRoot}}, {timeout: 20000}));

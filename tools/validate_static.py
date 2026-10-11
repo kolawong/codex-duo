@@ -9,7 +9,7 @@ import re
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN = ROOT / "plugins/fusion-minimal"
+PLUGIN = ROOT / "plugins/codex-duo"
 
 
 def validate_stdio_command(command, plugin_root):
@@ -49,6 +49,7 @@ def main():
     interface = manifest["extensions"]["com.openai"]["interface"]
     check(interface == overlay["interface"], "presentation synchronized")
     check(len(interface["shortDescription"]) <= 30, "subtitle at most 30 characters")
+    check(len(interface["defaultPrompt"]) <= 128, "default prompt accepted by native host")
     check(not any(k in manifest for k in ["skills", "interface", "mcpServers", "apps"]),
           "portable manifest avoids compatibility-only fields")
     check(overlay["skills"] == "./skills/", "compatibility skill root")
@@ -57,10 +58,10 @@ def main():
     frontmatter = dict(line.split(":", 1) for line in parts[1].strip().splitlines())
     check(frontmatter.get("name", "").strip() == skill.parent.name, "skill name matches folder")
     check(bool(frontmatter.get("description", "").strip()), "skill has trigger description")
-    for path in ["../fusion/references/contract.md", "../fusion/templates/task.json", "../fusion/scripts/fusion.py"]:
+    for path in ["../workflow/references/contract.md", "../workflow/templates/task.json", "../workflow/scripts/codex_duo.py"]:
         check((skill.parent / path).is_file(), "skill resource exists: " + path)
     config = tomllib.loads((ROOT / ".codex/config.toml").read_text())
-    agent = tomllib.loads((ROOT / ".codex/agents/fusion_worker.toml").read_text())
+    agent = tomllib.loads((ROOT / ".codex/agents/codex_duo_worker.toml").read_text())
     catalog = {x["slug"]: x for x in json.loads((ROOT / "evidence/bundled-models.json").read_text())}
     for name, data in [("coordinator", config)]:
         check(data["model"] in catalog, name + " model appears in bundled catalog")
@@ -68,15 +69,15 @@ def main():
         check(data["model_reasoning_effort"] in efforts, name + " effort advertised locally")
     check(all(isinstance(agent.get(k), str) and agent[k] for k in [
         "name", "description", "developer_instructions"]), "custom agent required fields")
-    check(agent["name"] == "fusion_worker", "custom agent name matches filename")
+    check(agent["name"] == "codex_duo_worker", "custom agent name matches filename")
     check(config["agents"]["enabled"] is True, "native worker capability enabled for authorized tasks")
     check("model" not in agent and "model_reasoning_effort" not in agent, "companion agent cannot override saved worker settings")
     check(config["agents"]["max_concurrent_threads_per_session"] == 1, "one worker limit prepared")
-    check(config["plugins"]["fusion-minimal@fusion-local"]["enabled"] is args.installed,
+    check(config["plugins"]["codex-duo@codex-duo-local"]["enabled"] is args.installed,
           "plugin enablement matches requested validation mode")
     check(config["features"]["hooks"] is False, "project hooks disabled")
     market = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
-    check(market["name"] == "fusion-local", "marketplace name matches enable key")
+    check(market["name"] == "codex-duo-local", "marketplace name matches enable key")
     entry = market["plugins"][0]
     check((ROOT / entry["source"]["path"]).resolve() == PLUGIN, "marketplace source resolves")
     check(not any(p.is_symlink() for p in PLUGIN.rglob("*")), "package has no symlinks")
@@ -89,8 +90,8 @@ def main():
     check(True, 'portable stdio command satisfies executable/path rules')
     check({k: v for k, v in mcp.items() if k != 'type'} == legacy, 'MCP compatibility command synchronized')
     check(overlay['mcpServers'] == './.mcp.json', 'compatibility MCP reference resolves')
-    check(mcp['command'] == './mcp/launch.sh' and mcp['args'] == ['--project-root', '/Users/kola/codex-fusion'],
-          'MCP deployment root is the legacy fallback; tools support explicit project roots')
+    check(mcp['command'] == './mcp/launch.sh' and mcp['args'] == ['--project-root', '${PLUGIN_ROOT}'],
+          'MCP startup root exists in the installed plugin; tools use explicit chat project roots')
     check((PLUGIN / 'mcp/server.py').is_file() and (PLUGIN / 'ui/model-desk.html').is_file(),
           'packaged MCP entrypoint and built view exist')
     version = re.search(r"^VERSION = '([^']+)'", (PLUGIN / 'mcp/server.py').read_text(), re.M)

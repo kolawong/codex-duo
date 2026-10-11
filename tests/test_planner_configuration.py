@@ -1,7 +1,7 @@
 """Planner preferences are opt-in, catalog validated and never dispatch a model."""
 import unittest
 import test_workflow
-from fusion_selection import DEFAULT_WORKFLOW, SelectionError, saved_workflow, validate_workflow
+from codex_duo_selection import DEFAULT_WORKFLOW, SelectionError, saved_workflow, validate_workflow
 
 
 class PlannerConfigurationTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class PlannerConfigurationTests(unittest.TestCase):
                         planner_reasoning_effort=self.selection['worker']['reasoning_effort'])
         saved = self.service.save({'selection': self.selection, 'workflow': workflow, 'expected_revision': 'none'})
         self.assertEqual('plan_only', saved['document']['workflow']['planner_mode'])
-        self.assertFalse((self.root / '.fusion' / 'plans').exists())
+        self.assertFalse((self.root / '.codex-duo' / 'plans').exists())
         workflow['planner_model'] = 'not-in-catalog'
         with self.assertRaises(SelectionError):
             self.service.save({'selection': self.selection, 'workflow': workflow, 'expected_revision': saved['revision']})
@@ -37,7 +37,10 @@ class PlannerConfigurationTests(unittest.TestCase):
     def test_mcp_planner_tools_require_explicit_project(self):
         from test_native import mcp
         definitions = {tool['name']: tool for tool in mcp.tool_definitions()}
-        for operation in ('begin', 'reserve', 'complete', 'status'):
-            tool = definitions['fusion.planner_' + operation]
+        for operation in ('begin', 'reserve', 'complete', 'status', 'run', 'stop'):
+            tool = definitions['codex_duo_planner_' + operation]
             self.assertIn('project_root', tool['inputSchema']['required'])
-        self.assertFalse(definitions['fusion.planner_reserve']['annotations']['idempotentHint'])
+        self.assertFalse(definitions['codex_duo_planner_reserve']['annotations']['idempotentHint'])
+        self.assertTrue(definitions['codex_duo_planner_run']['annotations']['openWorldHint'])
+        self.assertFalse(definitions['codex_duo_planner_run']['annotations']['readOnlyHint'])
+        self.assertIn('费用', definitions['codex_duo_planner_run']['description'])

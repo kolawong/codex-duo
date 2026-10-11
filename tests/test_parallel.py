@@ -11,9 +11,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'plugins/fusion-minimal/skills/fusion/scripts'))
-from fusion_service import FusionService
-from fusion_selection import SelectionError, normalize_catalog, default_selection, prepare_handoff
+sys.path.insert(0, str(ROOT / 'plugins/codex-duo/skills/workflow/scripts'))
+from codex_duo_service import CodexDuoService
+from codex_duo_selection import SelectionError, normalize_catalog, default_selection, prepare_handoff
 
 
 class ParallelTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class ParallelTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.env = patch.dict(os.environ, {'CODEX_HOME': str(self.root / 'home')}); self.env.start()
         self.catalog = normalize_catalog({'models':[{'slug':'worker','visibility':'list','supported_reasoning_levels':[{'effort':'high'}]}]})
-        self.service = FusionService(self.root / '.fusion', lambda:self.catalog)
+        self.service = CodexDuoService(self.root / '.codex-duo', lambda:self.catalog)
         self.task = {'schema_version':1, 'task_id':'parent', 'goal':'bounded feature',
             'allowed_paths':['a.py','b.py','c.py'], 'acceptance':['integration'], 'tests':[['python3','-m','unittest']]}
         self.workflow = {'activation':'automatic_project', 'coordinator_mode':'current_thread', 'max_worker_turns':3, 'max_parallel_workers':3}
@@ -57,6 +57,14 @@ class ParallelTests(unittest.TestCase):
         self.evidence(reservation['evidence_root'], reservation['task'])
         return self.call('complete',dispatch_id=reservation['id'],outcome='completed',native_receipt='offline native receipt fixture')
 
+    def test_duplicate_terminal_receipt_is_idempotent(self):
+        self.call('plan', host_capacity=1)
+        reservation = self.call('reserve', host_capacity=1, workstream_id='main')
+        first = self.failed(reservation)
+        second = self.failed(reservation)
+        self.assertEqual(first, second)
+        self.assertEqual(1, second['dispatch_count'])
+
     def test_simple_task_still_single_worker(self):
         plan=self.call('plan',host_capacity=3)
         self.assertEqual(1,plan['max_simultaneous_workers'])
@@ -74,7 +82,7 @@ class ParallelTests(unittest.TestCase):
         b=self.call('reserve',host_capacity=1,workstream_id='b'); self.failed(b)
         with self.assertRaisesRegex(SelectionError,'用完'): self.call('reserve',host_capacity=1,workstream_id='c')
         # Restarting the service / retrying the plan cannot replenish the parent budget.
-        self.service=FusionService(self.root/'.fusion',lambda:self.catalog)
+        self.service=CodexDuoService(self.root/'.codex-duo',lambda:self.catalog)
         self.assertEqual(0,self.call('plan',host_capacity=3,workstreams=self.streams())['remaining_worker_turns'])
         with self.assertRaises(SelectionError): self.call('plan',host_capacity=3)
 
@@ -120,7 +128,7 @@ class ParallelTests(unittest.TestCase):
     def test_concurrent_reservations_cannot_exceed_actual_capacity(self):
         self.call('plan',host_capacity=1,workstreams=self.streams())
         def reserve(sid):
-            service=FusionService(self.root/'.fusion',lambda:self.catalog)
+            service=CodexDuoService(self.root/'.codex-duo',lambda:self.catalog)
             try: return service.parallel('reserve',{**self.base,'host_capacity':1,'workstream_id':sid})
             except SelectionError: return None
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
@@ -133,14 +141,14 @@ class ParallelTests(unittest.TestCase):
         settings_before=self.service.store.path.read_bytes()
         self.assertEqual(1,self.service.defaults(str(self.root))['workflow']['max_parallel_workers'])
         self.assertEqual(settings_before,self.service.store.path.read_bytes())
-        old=prepare_handoff(self.task,self.selection,self.catalog,self.root/'.fusion/handoffs','old',legacy)
+        old=prepare_handoff(self.task,self.selection,self.catalog,self.root/'.codex-duo/handoffs','old',legacy)
         files={p:p.read_bytes() for p in Path(old['path']).rglob('*') if p.is_file()}
-        dirs=set((self.root/'.fusion').rglob('*'))
+        dirs=set((self.root/'.codex-duo').rglob('*'))
         value=self.service.execution_plan(old['id'])
         self.assertEqual(1,value['max_parallel_workers'])
-        self.assertEqual(dirs,set((self.root/'.fusion').rglob('*')))
+        self.assertEqual(dirs,set((self.root/'.codex-duo').rglob('*')))
         self.assertEqual(files,{p:p.read_bytes() for p in files})
-        missing=self.root/'.fusion/handoffs'/('0'*24)
+        missing=self.root/'.codex-duo/handoffs'/('0'*24)
         with self.assertRaises(SelectionError): self.service.execution_plan('0'*24)
         self.assertFalse(missing.exists())
 

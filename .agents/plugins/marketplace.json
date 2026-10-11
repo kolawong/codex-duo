@@ -1,9 +1,9 @@
 {
-  "name": "fusion-local",
+  "name": "codex-duo-local",
   "plugins": [
     {
-      "name": "fusion-minimal",
-      "source": {"source": "local", "path": "./plugins/fusion-minimal"},
+      "name": "codex-duo",
+      "source": {"source": "local", "path": "./plugins/codex-duo"},
       "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
       "category": "Productivity"
     }

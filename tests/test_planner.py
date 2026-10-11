@@ -10,10 +10,10 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'plugins/fusion-minimal/skills/fusion/scripts'))
-from fusion_service import FusionService
-from fusion_selection import SelectionError, default_selection, normalize_catalog, digest
-from fusion_planner import PlannerExecution, code_baseline, validate_request
+sys.path.insert(0, str(ROOT / 'plugins/codex-duo/skills/workflow/scripts'))
+from codex_duo_service import CodexDuoService
+from codex_duo_selection import SelectionError, default_selection, normalize_catalog, digest
+from codex_duo_planner import PlannerExecution, code_baseline, validate_request
 
 
 class PlannerTests(unittest.TestCase):
@@ -21,11 +21,11 @@ class PlannerTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         self.env = patch.dict(os.environ, {'CODEX_HOME': str(self.root / 'home')}); self.env.start()
         self.git('init', '-q'); self.git('config', 'user.name', 'Fixture'); self.git('config', 'user.email', 'fixture@example.invalid')
-        (self.root / '.gitignore').write_text('.fusion/\nhome/\nignored.txt\n.env\n')
+        (self.root / '.gitignore').write_text('.codex-duo/\nhome/\nignored.txt\n.env\n')
         (self.root / 'a.py').write_text('before\n')
         self.git('add', '.'); self.git('commit', '-qm', 'fixture')
         self.catalog = normalize_catalog({'models': [{'slug': 'planner', 'visibility': 'list', 'supported_reasoning_levels': [{'effort': 'high'}]}]})
-        self.service = FusionService(self.root / '.fusion', lambda: self.catalog)
+        self.service = CodexDuoService(self.root / '.codex-duo', lambda: self.catalog)
         self.workflow = {'activation': 'manual', 'coordinator_mode': 'current_thread', 'max_worker_turns': 3, 'max_parallel_workers': 1,
                          'planner_mode': 'plan_only', 'planner_model': 'planner', 'planner_reasoning_effort': 'high', 'max_planner_turns': 2}
         self.service.save({'selection': default_selection(self.catalog), 'workflow': self.workflow, 'expected_revision': 'none'})
@@ -68,7 +68,7 @@ class PlannerTests(unittest.TestCase):
         result = self.finish(dispatch)
         self.assertEqual('awaiting_user_review', result['state']); self.assertFalse(result['worker_execution_allowed'])
         self.assertFalse(result['execution_started']); self.assertEqual(before, (self.root / 'a.py').read_bytes())
-        self.assertFalse((self.root / '.fusion' / 'handoffs').exists()); self.assertFalse((self.root / '.fusion' / 'runs').exists())
+        self.assertFalse((self.root / '.codex-duo' / 'handoffs').exists()); self.assertFalse((self.root / '.codex-duo' / 'runs').exists())
         self.assertCode('plan_finished', self.reserve)
         self.assertCode('invalid_handoff', self.service.parallel, 'plan', {'project_root': str(self.root), 'handoff_id': self.pid, 'host_capacity': 1})
 
@@ -84,7 +84,7 @@ class PlannerTests(unittest.TestCase):
         for _ in range(2):
             dispatch = self.reserve()
             self.call('complete', dispatch_id=dispatch['dispatch_id'], outcome='failed', native_receipt='offline spawn denied')
-        self.service = FusionService(self.root / '.fusion', lambda: self.catalog)
+        self.service = CodexDuoService(self.root / '.codex-duo', lambda: self.catalog)
         repeated = self.call('begin', request=self.request, invocation='explicit')
         self.assertEqual(0, repeated['remaining_planner_turns']); self.assertEqual('budget_exhausted', repeated['state'])
         self.assertCode('budget_exhausted', self.reserve)
@@ -141,7 +141,7 @@ class PlannerTests(unittest.TestCase):
         self.finish(dispatch)
 
     def test_hash_tamper_and_linked_storage_fail_closed(self):
-        path = self.root / '.fusion' / 'plans' / (self.pid + '.json')
+        path = self.root / '.codex-duo' / 'plans' / (self.pid + '.json')
         original = path.read_bytes(); value = json.loads(original)
         value['payload']['snapshot']['planner']['max_turns'] = 5
         path.write_text(json.dumps(value)); self.assertCode('invalid_plan', self.call, 'status')
@@ -150,13 +150,13 @@ class PlannerTests(unittest.TestCase):
 
     def test_result_hash_rechecked_after_restart(self):
         dispatch = self.reserve(); self.finish(dispatch)
-        path = self.root / '.fusion' / 'plans' / (self.pid + '.json'); envelope = json.loads(path.read_bytes())
+        path = self.root / '.codex-duo' / 'plans' / (self.pid + '.json'); envelope = json.loads(path.read_bytes())
         envelope['payload']['result']['summary'] = 'tampered'; envelope['sha256'] = digest(envelope['payload'])
         path.write_text(json.dumps(envelope)); self.assertCode('invalid_plan', self.call, 'status')
 
     def test_requests_are_independent_strict_and_explicit(self):
         self.assertCode('explicit_planning_required', self.call, 'begin', request=self.request, invocation='automatic')
-        for path in ('../outside', '/absolute', '.git/config', '.fusion/selection.json', './a.py', 'a/../a.py'):
+        for path in ('../outside', '/absolute', '.git/config', '.codex-duo/selection.json', './a.py', 'a/../a.py'):
             self.assertCode('invalid_plan_contract', validate_request, {**self.request, 'read_paths': [path]})
         self.assertCode('invalid_plan_contract', validate_request, {**self.request, 'allowed_paths': ['a.py']})
         self.assertCode('invalid_plan_contract', validate_request, {**self.request, 'schema_version': True})
@@ -176,11 +176,11 @@ class PlannerTests(unittest.TestCase):
 
     def test_mcp_and_cli_lifecycle_routes(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location('planner_test_mcp', ROOT / 'plugins/fusion-minimal/mcp/server.py')
+        spec = importlib.util.spec_from_file_location('planner_test_mcp', ROOT / 'plugins/codex-duo/mcp/server.py')
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         server = module.MCPServer(self.service)
         def mcp(operation, **body):
-            return server.call('fusion.planner_' + operation, {'project_root': str(self.root), **body})['structuredContent']
+            return server.call('codex_duo_planner_' + operation, {'project_root': str(self.root), **body})['structuredContent']
         begin = mcp('begin', request=self.request, invocation='explicit')
         self.assertEqual(self.pid, begin['plan_id'])
         dispatch = mcp('reserve', plan_id=self.pid, host_capabilities=self.host)
@@ -195,11 +195,11 @@ class PlannerTests(unittest.TestCase):
                            'elif sys.argv[1:] == ["debug","models","--bundled"]: print(json.dumps({"models":[{"slug":"planner","visibility":"list","supported_reasoning_levels":[{"effort":"high"}]}]}))\n'
                            'else: raise SystemExit(99)\n')
         fixture.chmod(0o755)
-        command = [sys.executable, '-B', str(ROOT / 'plugins/fusion-minimal/skills/fusion/scripts/fusion_workflow.py')]
+        command = [sys.executable, '-B', str(ROOT / 'plugins/codex-duo/skills/workflow/scripts/codex_duo_workflow.py')]
         request = {**self.request, 'task_id': 'cli-plan'}
         request_path = fixture.parent / 'request.json'; request_path.write_text(json.dumps(request))
         host_path = fixture.parent / 'host.json'; host_path.write_text(json.dumps(self.host))
-        env = {**os.environ, 'FUSION_CODEX_CLI': str(fixture)}
+        env = {**os.environ, 'CODEX_DUO_CODEX_CLI': str(fixture)}
         def cli(operation, *args):
             result = subprocess.run([*command, 'planner_' + operation, '--project-root', str(self.root), *args],
                                     capture_output=True, text=True, check=True, env=env)
@@ -217,23 +217,24 @@ class PlannerTests(unittest.TestCase):
         dispatch = self.reserve()
         template = Path(dispatch['dispatch_contract']['agent_template'])
         config = tomllib.loads(template.read_text())
-        self.assertEqual((ROOT / '.codex/agents/fusion_planner.toml').read_bytes(), template.read_bytes())
+        self.assertEqual((ROOT / '.codex/agents/codex_duo_planner.toml').read_bytes(), template.read_bytes())
         self.assertEqual('read-only', config['sandbox_mode'])
         self.assertEqual('never', config['approval_policy'])
         self.assertFalse(config['agents']['enabled'])
         self.assertFalse(config['apps']['_default']['enabled'])
         self.assertFalse(config['mcp_servers']['codex-duo']['enabled'])
+        self.assertEqual('false', config['mcp_servers']['codex-duo']['command'])
         self.assertNotIn('model', config); self.assertNotIn('model_reasoning_effort', config)
         self.assertTrue(Path(dispatch['dispatch_contract']['host_guide']).is_file())
         build = (ROOT / 'macos/build.sh').read_text()
-        for artifact in ('fusion_planner.py', 'fusion_planner.toml', 'planner-host.md'):
+        for artifact in ('codex_duo_planner.py', 'codex_duo_planner.toml', 'planner-host.md'):
             self.assertIn(artifact, build)
         self.finish(dispatch)
 
     def test_total_size_file_count_and_submodule_bounds(self):
-        with patch('fusion_planner.MAX_TOTAL_BYTES', 1):
+        with patch('codex_duo_planner.MAX_TOTAL_BYTES', 1):
             self.assertCode('baseline_unavailable', code_baseline, self.root, ['a.py'])
-        with patch('fusion_planner.MAX_FILES', 1):
+        with patch('codex_duo_planner.MAX_FILES', 1):
             self.assertCode('baseline_unavailable', code_baseline, self.root, ['a.py'])
         head = self.git('rev-parse', 'HEAD').decode().strip()
         self.git('update-index', '--add', '--cacheinfo', '160000,' + head + ',submodule')

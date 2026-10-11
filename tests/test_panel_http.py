@@ -1,26 +1,31 @@
 # Test storage is deliberately independent of the user's real Codex home.
 import os as _test_os, tempfile as _test_tempfile, atexit as _test_atexit
-if not _test_os.environ.get('FUSION_TEST_CODEX_HOME'):
+if not _test_os.environ.get('CODEX_DUO_TEST_CODEX_HOME'):
     _test_home = _test_tempfile.TemporaryDirectory(prefix='duo-test-home-')
     _test_atexit.register(_test_home.cleanup)
-    _test_os.environ['FUSION_TEST_CODEX_HOME'] = _test_home.name
-_test_os.environ['CODEX_HOME'] = _test_os.environ['FUSION_TEST_CODEX_HOME']
+    _test_os.environ['CODEX_DUO_TEST_CODEX_HOME'] = _test_home.name
+_test_os.environ['CODEX_HOME'] = _test_os.environ['CODEX_DUO_TEST_CODEX_HOME']
 import http.client
 import json
 from pathlib import Path
 import sys
 import tempfile
-import threading
+import io
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from panel.server import PanelServer, PanelService
+from panel.server import Handler, PanelService
 from test_selection import catalog
-from fusion_selection import saved_workflow
+from codex_duo_selection import saved_workflow
 
 
 class PanelHTTPTests(unittest.TestCase):
+    def test_retired_review_route_is_unavailable(self):
+        status, _ = self.request('POST', '/api/review-prompt', {'project_root': str(self.service.store.directory.parent)})
+        self.assertEqual(404, status)
+
     def setUp(self):
         from unittest.mock import patch as _home_patch
         _home = _test_tempfile.TemporaryDirectory(prefix='duo-case-home-')
@@ -29,22 +34,26 @@ class PanelHTTPTests(unittest.TestCase):
         _environment.start(); self.addCleanup(_environment.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.service = PanelService(Path(self.temp.name), catalog)
-        self.server = PanelServer(('127.0.0.1', 0), self.service)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
+        self.server = SimpleNamespace(service=self.service, server_port=8765)
 
     def tearDown(self):
-        self.server.shutdown(); self.server.server_close(); self.thread.join()
         self.temp.cleanup()
 
     def request(self, method, path, body=None, headers=None):
-        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=3)
-        base = {'Content-Type': 'application/json', 'X-Fusion-Token': self.service.token}
+        payload = json.dumps(body).encode() if body is not None else b''
+        base = {'Host': '127.0.0.1:8765', 'Content-Type': 'application/json',
+                'Content-Length': str(len(payload)), 'X-Codex-Duo-Token': self.service.token}
         base.update(headers or {})
-        connection.request(method, path, json.dumps(body) if body is not None else None, base)
-        response = connection.getresponse(); raw = response.read()
+        raw = (f'{method} {path} HTTP/1.0\r\n' + ''.join(f'{k}: {v}\r\n' for k,v in base.items()) + '\r\n').encode() + payload
+        class MemorySocket:
+            def __init__(self, value): self.input = io.BytesIO(value); self.output = bytearray()
+            def makefile(self, mode, *args): return self.input
+            def sendall(self, data): self.output.extend(data)
+        connection = MemorySocket(raw)
+        Handler(connection, ('127.0.0.1', 12345), self.server)
+        response = http.client.HTTPResponse(SimpleNamespace(makefile=lambda *args: io.BytesIO(connection.output)))
+        response.begin(); raw = response.read()
         data = json.loads(raw) if response.getheader('Content-Type').startswith('application/json') else raw
-        connection.close()
         return response.status, data
 
     def test_save_reload_and_prepare(self):
@@ -74,6 +83,7 @@ class PanelHTTPTests(unittest.TestCase):
         self.assertEqual(status,200);self.assertEqual(restored['source'],'global')
         self.assertEqual(restored['workflow'],saved_workflow({'workflow': workflow}))
 
+
     def test_invalid_model_returns_actionable_error(self):
         _, state = self.request('GET', '/api/state')
         value = state['default']; value['worker']['model'] = 'fake'
@@ -91,7 +101,7 @@ class PanelHTTPTests(unittest.TestCase):
         self.assertEqual(400, status)
 
     def test_foreign_origin_and_bad_token_rejected(self):
-        for headers in [{'Origin': 'https://example.com'}, {'X-Fusion-Token': 'wrong'}]:
+        for headers in [{'Origin': 'https://example.com'}, {'X-Codex-Duo-Token': 'wrong'}]:
             status, _ = self.request('POST', '/api/selection', {}, headers)
             self.assertEqual(403, status)
 

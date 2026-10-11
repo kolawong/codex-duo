@@ -3,7 +3,7 @@
 > **一个规划，一个执行** —— 面向 OpenAI Codex 的原生双模型 / 多代理协同开发系统。  
 > 当前聊天负责任务规划与验收，原生执行代理（Worker）在受控边界与统一预算内高效交付代码。
 
-[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Proprietary-informational.svg)]()
@@ -51,7 +51,7 @@ Codex Duo 旨在解决大语言模型协同编码中的“规划发散”、“�
 
 - **🚀 原生子代理派发**：基于 Codex 宿主内置的子代理能力执行，不依赖外挂不可控的外部命令行模型。
 - **⚡ 智能并行协作**：支持独立文件的并行开发，依赖任务等待前序验证完成；对有冲突或交叠范围的任务严格拒绝拆分，保持单 Worker 串行执行。
-- **📊 确定性契约与证据链**：每个子任务具备唯一的 `task.json` 契约，执行产生独立的 `diff`、`result.json` 及测试日志（保存在 `.fusion/evidence/`），确保每一步改动皆可追溯、可审计。
+- **📊 确定性契约与证据链**：每个子任务具备唯一的 `task.json` 契约，执行产生独立的 `diff`、`result.json` 及测试日志（保存在 `.codex-duo/evidence/`），确保每一步改动皆可追溯、可审计。
 - **🖥️ 原生 macOS 菜单栏应用**：提供精致石墨外观的 SwiftUI 原生菜单栏面板（`Codex Duo.app`），无 Dock 栏干扰，随时切换全局/项目配置、查看当前配置生效来源。
 - **🛡️ 冲突防护与原子更新**：所有配置采用带版本哈希（`revision`）的原子写入机制，并发修改冲突时拒绝覆盖并保留编辑草稿。
 
@@ -70,22 +70,22 @@ sequenceDiagram
     participant Worker as 原生执行代理 (Worker)
 
     User->>Coord: 提出开发需求 (如："修复登录校验逻辑并验证")
-    Coord->>MCP: fusion.defaults (读取当前项目实际生效配置)
+    Coord->>MCP: codex_duo_defaults (读取当前项目实际生效配置)
     Coord->>Coord: 静态分析代码，确定修改范围与验收测试
-    Coord->>MCP: fusion.begin (原子准备内部契约快照与预算)
+    Coord->>MCP: codex_duo_begin (原子准备内部契约快照与预算)
     opt 任务拆解与并发规划
-        Coord->>MCP: fusion.plan (拆解无交叠独立任务流)
+        Coord->>MCP: codex_duo_plan (拆解无交叠独立任务流)
     end
-    Coord->>MCP: fusion.reserve (锁定 Worker 槽位与单次预算)
+    Coord->>MCP: codex_duo_reserve (锁定 Worker 槽位与单次预算)
     Coord->>Worker: 启动原生子代理 (派发任务契约与限定路径)
     Worker->>Worker: 修改代码并在独立环境执行指定测试
     Worker-->>MCP: 写入 result.json / change.diff / test.log
-    MCP-->>Coord: fusion.complete (提交执行证据)
+    MCP-->>Coord: codex_duo_complete (提交执行证据)
     Coord->>Coord: 协调器独立复核证据与全局回归测试
     alt 验收通过
         Coord-->>User: 汇报完成情况与变更摘要
     else 发现问题 (在总预算内)
-        Coord->>MCP: fusion.reserve (申请纠错轮次，扣减总预算)
+        Coord->>MCP: codex_duo_reserve (申请纠错轮次，扣减总预算)
         Coord->>Worker: 启动修正执行
     end
 ```
@@ -94,7 +94,7 @@ sequenceDiagram
 
 | 组件 | 对应路径 | 核心职责 |
 | :--- | :--- | :--- |
-| **Codex 插件** | `plugins/fusion-minimal` | 提供本地 stdio MCP 服务，暴露 `fusion.defaults`、`fusion.begin`、`fusion.plan`、`fusion.reserve`、`fusion.complete`、`fusion.verify` 等核心接口；提供 `codex-duo` 规范技能。 |
+| **Codex 插件** | `plugins/codex-duo` | 提供本地 stdio MCP 服务，暴露 `codex_duo_defaults`、`codex_duo_begin`、`codex_duo_plan`、`codex_duo_reserve`、`codex_duo_complete`、`codex_duo_verify` 等核心接口；提供 `codex-duo` 规范技能。 |
 | **macOS 菜单栏 App** | `macos/` | 基于 SwiftUI 的原生菜单栏应用，负责管理全局默认偏好与各项目独立设置，以无端口的 IPC 桥接安全通信。 |
 | **设置与 Web 面板** | `panel/`, `native-build/` | 嵌入式与独立本地设置面板前端，提供直观的模型目录感知、推理强度校验及并行数设置。 |
 | **工程测试套件** | `tests/` | 覆盖并发控制、状态隔离、契约约束、跨项目权限等多维度的自动化回归用例。 |
@@ -114,7 +114,7 @@ sequenceDiagram
 
 ```sh
 # 添加本地插件
-/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex plugin add fusion-minimal@fusion-local --json
+/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex plugin add codex-duo@codex-duo-local --json
 ```
 
 ### 2. 构建与运行 macOS 菜单栏应用
@@ -139,7 +139,7 @@ open "macos/dist/Codex Duo.app"
 ## Codex Duo project workflow
 
 For user-requested implementation or bug fixes, load the `codex-duo` skill and read
-`fusion.defaults` with the actual current chat project directory as `project_root`.
+`codex_duo_defaults` with the actual current chat project directory as `project_root`.
 ...
 <!-- codex-duo:end -->
 ```
@@ -164,7 +164,7 @@ For user-requested implementation or bug fixes, load the `codex-duo` skill and r
 ### 2. 只读查询与对话（零开销保护）
 
 当你的请求属于以下情况时，系统**绝对不会**启动 Worker 模型，避免产生额外消耗：
-- 询问架构或代码含义（如 *“解释一下 `fusion_service.py` 的作用”*）；
+- 询问架构或代码含义（如 *“解释一下 `codex_duo_service.py` 的作用”*）；
 - 只读检查（如 *“搜索项目中是否有用到 asyncio”*）；
 - 明确要求不启动模型（如 *“先给我出个方案，不要写代码”*）；
 - 修改或查看系统配置。
@@ -182,7 +182,7 @@ For user-requested implementation or bug fixes, load the `codex-duo` skill and r
 ### 配置解析层级
 
 ```text
-[当前项目覆盖: <project_root>/.fusion/selection.json]
+[当前项目覆盖: <project_root>/.codex-duo/selection.json]
                      │
                      ▼ (未配置时自动继承)
 [全局默认配置: ~/.codex/codex-duo/selection.json]
@@ -260,11 +260,11 @@ codex-duo/
 │   ├── Tests/                 # Swift 单元测试
 │   └── build.sh               # 编译与 .app 打包脚本
 ├── plugins/
-│   └── fusion-minimal/        # Codex 插件主目录 (本地 stdio MCP)
+│   └── codex-duo/        # Codex 插件主目录 (本地 stdio MCP)
 │       ├── mcp/               # MCP 协议服务端入口与跨平台启动器 (launch.sh)
 │       ├── skills/
 │       │   ├── codex-duo/     # 规范技能定义 (SKILL.md)
-│       │   └── fusion/        # 工作流契约、调度核心脚本与模板
+│       │   └── codex-duo/        # 工作流契约、调度核心脚本与模板
 │       └── plugin.json        # 插件元数据与能力声明清单
 ├── panel/                     # 嵌入式与独立本地 Web 设置面板
 ├── native-build/              # 前端编译脚本、测试客户端与打包管线
@@ -293,7 +293,14 @@ codex-duo/
 
 ## 版本演进概览
 
-- **v0.7.0（当前版本）**：
+- **v0.9.8（当前插件版本）**：修正详情页与输入示例的 logo / composerIcon 资源路径前缀；应用仍为 0.9.7 / build 16，页面显示待重载后确认。
+- **v0.9.7**：插件与应用图标从标题栏原 SVG 统一生成，包含完整 ICNS 尺寸与 PNG 引用。
+- **v0.9.6**：移除手动验收与唤醒专用流程，主对话等待结果并验收；保留 Planner、原生 Worker、通用终态、diff 证据链及界面修复。
+- **v0.9.5**：明确 Worker canonical diff 契约，提供范围绑定的 snapshot/diff/verify 命令，新增/删除证据与诊断回归。
+- **v0.9.4**：原生设置头部固定独立图标占位，窄宽及长状态文案自适应；设置与完成流程不变。
+- **v0.9.1**：澄清旧式 prepare 与当前 begin 的区别，提供 coordinator_required 的具体原因与恢复步骤，保留快照和预算保护。
+
+- **v0.9.0**：
   - 引入受控多 Worker 并行能力（`max_parallel_workers` 可选 1 / 2 / 3）；
   - 实现持久化父任务执行账本，首次派发与所有修正严格共享 `max_worker_turns` 总预算；
   - 完善冲突范围检测，交叠或不确定依赖的任务强制保持单 Worker 安全调度。
@@ -316,28 +323,32 @@ codex-duo/
 旧配置默认关闭；在原生菜单、Web 面板或插件设置中打开“独立规划代理”，选择模型、强度和
 1–3 次总规划预算，然后明确要求“只规划”。保存配置不会启动模型。
 
-### 当前宿主限制
+### 官方独立只读会话
 
-这是独立规划协议、配置与状态管理的第一版，**要求宿主确认只读能力**。
-插件本身不启动模型，也不提供原生沙箱。仓库新增官方格式的 `.codex/agents/fusion_planner.toml`，
-并附[宿主接入说明](plugins/fusion-minimal/skills/fusion/references/planner-host.md)。只读沙箱内的读取命令可以运行；
-宿主必须真正禁止写入、提权、外部工具副作用、网络与再次派发代理，并支持所选模型/强度。
-普通 Worker 加一句“不要改文件”不符合要求。没有这些实际能力的宿主会被阻断，不会自动降级到
-有写权限的 Worker。本次离线测试没有证明任何真实宿主支持这组权限，也没有运行真实模型。
+当前聊天可通过插件建立独立 Local 规划会话，不再依赖自定义角色选择。它使用官方 app-server
+接口，并在模型启动前核对实际只读、网络禁用、approval never、模型与强度响应，禁用继承的
+MCP、插件、apps、hooks 和递归代理。配置或权限不匹配时直接阻断，不降级为 Worker。
+保存设置不收费；明确启动规划会产生所选模型调用费用，结果回当前聊天确认。
 
-能力字段由当前聊天协调者基于实际工具定义填写，不由 Planner 在结果中自证。
-服务端可以验证字段一致性、状态、哈希与预算，但不能认证这些声明或拦截绕过它的模型调用。
-因此返回 reservation 不代表已执行，receipt/hash 成功也不代表已证明模型来源或沙箱隔离。
+正常使用：保存规划偏好后，在当前聊天说 **“只规划：你的目标，不执行”**。
+也可以明确批准单次模型、强度和预算，保持默认关闭；协调者内部准备契约，用户无需拼 JSON。
+可在聊天要求“查询规划状态”或“停止规划”。现有会话可能需要刷新技能/工具，但不会自动重启应用。
 
 ### 入口与结果
 
-新增 `fusion.planner_begin / planner_reserve / planner_complete / planner_status`；
-CLI 同名子命令可供旧宿主使用。所有调用必须提供实际项目的 `project_root`。
-规划请求是独立契约：`schema_version=1, task_id, goal, read_paths, questions`。
-`read_paths` 必须为项目内明确的相对文件路径，可以指向尚未创建的文件，不接受目录或通配符。
-返回计划包括摘要、步骤、风险、待确认问题与建议测试；测试一律标记 `not_run`。
-Planner 不运行测试、不写 diff、代码或结果文件，不拥有用户批准权，不直接启动 Worker。
-服务端状态文件由协调者写入；Planner 只把内存中的结果返回当前聊天。
+`codex_duo_planner_begin → planner_run → planner_status` 是独立会话路径；`planner_stop` 请求停止。
+所有调用必须显式提供当前项目 `project_root`。请求包括 schema_version=1、task_id、goal、
+read_paths、questions；只接受项目内明确的相对文件路径，可指向尚未创建的文件。
+适配器传入这些文件的有限 UTF-8 内容和独立输出 schema，不让模型自己填写权限证明。
+结果为摘要、步骤、风险、待确认问题与建议测试，建议测试一律 not_run。Planner 不测试、
+不构建、不写代码或结果文件、不批准实施、不启动 Worker；结果由父层保存并校验。
+
+会话/回执、有效权限、预算和 turn 发出意图持久化；重复 attempt_id 只读原状态。
+发出模型 turn 后失败也不自动重试或换模型；超时、连接断开或进程丢失会保持不确定派发，
+禁止再启动以免重复计费。预检失败的尝试也保守占用任务尝试预算，状态标注 turn 未发出。
+独立会话不改变当前聊天模型。原 planner_reserve/complete 保留为兼容原生宿主入口；
+自定义 codex_duo_planner 配置可用于那条链，但不再是独立会话的前置要求。
+详见[宿主说明](plugins/codex-duo/skills/workflow/references/planner-host.md)。
 
 新增 workflow 字段：
 
@@ -347,7 +358,7 @@ Planner 不运行测试、不写 diff、代码或结果文件，不拥有用户�
 
 模型、配置版本、输入与代码基线在任务创建时固定；同一 task_id 重开或服务重启不会重置预算。
 代码基线覆盖 Git HEAD、索引和跟踪/非忽略未跟踪文件的内容哈希，也包括明确指定的忽略文件。
-`.fusion` 内部状态不计入代码基线。拒绝部分常见凭据命名（如 `.env`、`.aws`、`.ssh`、私钥后缀），但这不是秘密检测保证；
+`.codex-duo` 内部状态不计入代码基线。拒绝部分常见凭据命名（如 `.env`、`.aws`、`.ssh`、私钥后缀），但这不是秘密检测保证；
 仅在已清理秘密的代码工作树使用。符号链接、子模块、无提交或非根目录仓库
 暂不支持。上限为 20,000 个文件、每文件 32 MiB、合计 128 MiB；超限直接阻断，不声称部分扫描完整。
 计划期间代码变化使结果失效；这不是对并发编辑的原子快照，应在稳定工作树使用。
@@ -357,9 +368,31 @@ Planner 不运行测试、不写 diff、代码或结果文件，不拥有用户�
 
 这一版刻意没有“规划后自动执行”。计划先回到当前聊天。你明确批准实施后，协调者重新检查
 `planner_status` 的代码基线和实际计划内容，将已批准范围转成原有普通 Worker 任务，继续
-`fusion.begin → plan → reserve → complete → verify`。计划 ID 不能作为执行交接 ID；
+`codex_duo_begin → plan → reserve → complete → verify`。计划 ID 不能作为执行交接 ID；
 规划契约不能进入 Worker。计划本身、设置开关和 Planner 声称已批准都不构成实施授权。
 
 开发验证新增 `tests/test_planner.py` 和 `tests/test_planner_configuration.py`，覆盖能力门禁、
-模型失败、预算/重启、并发派发、哈希篡改、基线变化、重复结果及设置兼容。原生宿主只读调度
-必须在具备真实权限 API 的环境单独验证；macOS 菜单栏仍需在 macOS 构建和交互验收。
+模型失败、预算/重启、并发派发、哈希篡改、基线变化、重复结果及设置兼容。新增
+`tests/test_planner_session.py` 验证官方会话协议、预检阻断、唯一派发、失联和停止；离线 fixture
+不证明真实模型执行，真实验收另存官方会话响应与模型回执。
+
+名称迁移（0.9.0）：活动插件为 `codex-duo@codex-duo-local`，MCP 为 `codex-duo`，工具统一 `codex_duo_` 前缀，项目状态为 `.codex-duo`。旧状态须使用 `python3 -B plugins/codex-duo/skills/workflow/scripts/codex_duo_workflow.py migrate --project-root <项目绝对路径>` 显式迁移；它原样移动配置、预算和会话记录，重复执行不变，冲突时停止。旧文件名仅用于迁移识别，不注册旧工具或角色。全局 `CODEX_HOME/codex-duo` 模型偏好不变。
+
+### 结果返回与验收
+
+主对话等待原生 Worker 完成，记录真实回执并验证证据，再独立检查修改和测试后报告结果。独立规划代理仍只读，计划返回主对话确认，不自动执行。完成不等于验收通过；未知、失败、取消不能冒称完成。
+
+已移除手动验收完成列表、复制提示与后台唤醒实验。旧设置读取统一按 return，读取不会写盘；授权迁移只更改保存的完成模式，保留模型、预算、项目覆盖和历史记录。不会修补旧 failed 证据或把余额当成重试授权。
+
+### 当前聊天执行入口与旧交接
+
+正常执行顺序是 `codex_duo_defaults → codex_duo_begin → codex_duo_plan → codex_duo_reserve → 原生 Worker → complete → verify`。
+`prepare` 是旧式声明交接入口，缺少工作流字段，不能直接进入 `plan/reserve`。
+`execution_plan` 只读检查交接资格；`plan` 建立子任务与容量计划，两者都不启动规划模型。
+若误用了 `prepare`，确认同一任务从未保留或派发后，保留旧交接，用其原始 task（含相同 task_id）调用 `begin`。
+新快照包含工作流，所以 ID 会不同；已有预算不能通过新任务重置。`selected_model` 的原快照仍须按其主控约束处理。
+请求级字段不会覆盖主控方式，保存的模型选择也不能证明实际聊天模型身份。
+
+### Worker diff 证据（0.9.5）
+
+`reserve.evidence_commands` 提供明确的改前 `snapshot_before_edit`、改后 `diff_after_edit`、保存真实测试日志/result.json 后的 `preflight_result`。主控应原样传给 Worker，改前必须捕获当前实际字节；不用 Git HEAD，也不扫描整份脏 diff。输出为 `--- a/<项目相对文件>` / `+++ b/<同一文件>`，新增/删除只在缺失的一侧使用 `/dev/null`。临时、未跟踪、非 Git 文件只要处于项目内明确 allowed_paths 就支持；缺基线、已有输出、二进制、符号链接、重命名元数据和仅空文件新增/删除会明确拒绝。完整命令和示例见插件 `skills/workflow/references/contract.md`。预检只检查格式、范围与证据哈希，不证明代码验收通过、不启动模型、不授予重试权限；失败的历史 Worker 记录不修补、不重提 complete。

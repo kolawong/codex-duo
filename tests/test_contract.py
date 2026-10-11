@@ -1,10 +1,10 @@
 # Test storage is deliberately independent of the user's real Codex home.
 import os as _test_os, tempfile as _test_tempfile, atexit as _test_atexit
-if not _test_os.environ.get('FUSION_TEST_CODEX_HOME'):
+if not _test_os.environ.get('CODEX_DUO_TEST_CODEX_HOME'):
     _test_home = _test_tempfile.TemporaryDirectory(prefix='duo-test-home-')
     _test_atexit.register(_test_home.cleanup)
-    _test_os.environ['FUSION_TEST_CODEX_HOME'] = _test_home.name
-_test_os.environ['CODEX_HOME'] = _test_os.environ['FUSION_TEST_CODEX_HOME']
+    _test_os.environ['CODEX_DUO_TEST_CODEX_HOME'] = _test_home.name
+_test_os.environ['CODEX_HOME'] = _test_os.environ['CODEX_DUO_TEST_CODEX_HOME']
 import copy
 import importlib.util
 import json
@@ -14,9 +14,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
-    "fusion", ROOT / "plugins/fusion-minimal/skills/fusion/scripts/fusion.py")
-fusion = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(fusion)
+    "codex_duo", ROOT / "plugins/codex-duo/skills/workflow/scripts/codex_duo.py")
+codex_duo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(codex_duo)
 
 
 class ContractTest(unittest.TestCase):
@@ -31,7 +31,7 @@ class ContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.artifacts = Path(cls.temp.name) / "demo"
-        cls.verdict = fusion.demo(cls.artifacts)
+        cls.verdict = codex_duo.demo(cls.artifacts)
         cls.task = json.loads((cls.artifacts / "task.json").read_text())
         cls.result = json.loads((cls.artifacts / "result.json").read_text())
 
@@ -42,8 +42,8 @@ class ContractTest(unittest.TestCase):
     def reject(self, change):
         result = copy.deepcopy(self.result)
         change(result)
-        with self.assertRaises(fusion.EvidenceError):
-            fusion.verify(self.task, result, self.artifacts)
+        with self.assertRaises(codex_duo.EvidenceError):
+            codex_duo.verify(self.task, result, self.artifacts)
 
     def test_offline_red_then_green(self):
         self.assertNotEqual(self.verdict["baseline_exit_code"], 0)
@@ -93,8 +93,8 @@ class ContractTest(unittest.TestCase):
         link.unlink()
 
     def test_existing_demo_not_overwritten(self):
-        with self.assertRaises(fusion.EvidenceError):
-            fusion.demo(self.artifacts)
+        with self.assertRaises(codex_duo.EvidenceError):
+            codex_duo.demo(self.artifacts)
 
 
 if __name__ == "__main__":

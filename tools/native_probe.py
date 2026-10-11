@@ -56,7 +56,7 @@ def probe(extra, read_plugin=False):
         try:
             output["methods_requested"].append("initialize")
             initialized = request(1, "initialize", {
-                "clientInfo": {"name": "fusion_offline_probe", "title": "Fusion Offline Probe", "version": "0.1.0"},
+                "clientInfo": {"name": "codex_duo_offline_probe", "title": "Codex Duo Offline Probe", "version": "0.1.0"},
                 "capabilities": {"experimentalApi": True}})
             output["initialize_error"] = initialized.get("error")
             send({"method": "initialized", "params": {}})
@@ -69,7 +69,7 @@ def probe(extra, read_plugin=False):
             if read_plugin and not reply.get("error"):
                 output["methods_requested"].append("plugin/read")
                 plugin = request(3, "plugin/read", {
-                    "pluginName": "fusion-minimal",
+                    "pluginName": "codex-duo",
                     "marketplacePath": str(ROOT / ".agents/plugins/marketplace.json")})
                 output["plugin_error"] = plugin.get("error")
                 # Select identity and skills only; a read never installs the plugin.
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     valid = probe(["-c", "agents.enabled=false", "-c", "agents.max_concurrent_threads_per_session=1",
                    "-c", 'agents.default_subagent_model="gpt-6-luna"',
                    "-c", 'agents.default_subagent_reasoning_effort="high"'], read_plugin=True)
-    negative = probe(["-c", "fusion_unknown_config_sentinel=true"])
+    negative = probe(["-c", "codex_duo_unknown_config_sentinel=true"])
     result = {"valid": valid, "negative_unknown_key": negative,
               "note": "No thread/new, turn/start, model inference, plugin install, or hook trust request."}
     (ROOT / "evidence/current").mkdir(parents=True, exist_ok=True)

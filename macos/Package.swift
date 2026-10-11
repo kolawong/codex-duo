@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "FusionMenu",
+    name: "CodexDuoMenu",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "FusionMenu", targets: ["FusionMenu"])],
+    products: [.executable(name: "CodexDuoMenu", targets: ["CodexDuoMenu"])],
     targets: [
-        .executableTarget(name: "FusionMenu", resources: [.copy("Resources/bridge.py"), .copy("Resources/Brand")]),
-        .testTarget(name: "FusionMenuTests", dependencies: ["FusionMenu"])
+        .executableTarget(name: "CodexDuoMenu", resources: [.copy("Resources/bridge.py"), .copy("Resources/Brand")]),
+        .testTarget(name: "CodexDuoMenuTests", dependencies: ["CodexDuoMenu"])
     ],
     swiftLanguageModes: [.v5]
 )

@@ -7,6 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const bundled = await build({entryPoints:[path.join(root,'native-build/bridge.js')], bundle:true,
   write:false, format:'iife', target:'es2022', minify:true, legalComments:'inline'});
 let html = await readFile(path.join(root,'panel/static/index.html'),'utf8');
+const brand = await readFile(path.join(root,'macos/Sources/CodexDuoMenu/Resources/Brand/AppIcon.svg'),'utf8');
+html = html.replace(/(<span class="mark" aria-hidden="true">)<svg[\s\S]*?<\/svg>/, (_, prefix) => prefix + brand.trim());
 const css = await readFile(path.join(root,'panel/static/style.css'),'utf8');
 const js = await readFile(path.join(root,'panel/static/app.js'),'utf8');
 // Catch damaged HTML substitution before packaging (replacement strings interpret $&).
@@ -18,6 +20,6 @@ html = html.replace('<link rel="stylesheet" href="/style.css">',()=>'<style>'+cs
 const extracted = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
 if (extracted !== code) throw new Error('Embedded script changed during HTML assembly');
 new vm.Script(extracted);
-await mkdir(path.join(root,'plugins/fusion-minimal/ui'),{recursive:true});
-await writeFile(path.join(root,'plugins/fusion-minimal/ui/model-desk.html'),html);
+await mkdir(path.join(root,'plugins/codex-duo/ui'),{recursive:true});
+await writeFile(path.join(root,'plugins/codex-duo/ui/model-desk.html'),html);
 console.log('Built self-contained MCP App from shared panel source.');

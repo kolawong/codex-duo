@@ -6,7 +6,7 @@ const catalog={models:[{id:'alpha',name:'Alpha',description:'Fixture',efforts:['
 let state={catalog,default:{coordinator:{model:'alpha',reasoning_effort:'high'},worker:{model:'beta',reasoning_effort:'medium'}},workflow:{activation:'manual',coordinator_mode:'current_thread',max_worker_turns:3},saved:{document:null,error:null,revision:'none'},scope:'project',project_root:'/fixture',global_revision:'none',source:'none'};
 let saves=0; const clone=x=>JSON.parse(JSON.stringify(x));
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
-w.fusionTransport={initial:async()=>clone(state),request:async(path,body)=>{
+w.codexDuoTransport={initial:async()=>clone(state),request:async(path,body)=>{
  if(!body)return clone(state);assert.equal(path,'/api/selection');saves++;
  state.workflow=clone(body.workflow);state.saved={document:{selection:clone(body.selection),workflow:clone(body.workflow)},revision:String(saves),error:null};return {...clone(state.saved),state:clone(state)};
 }};

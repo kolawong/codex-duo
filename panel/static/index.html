@@ -74,7 +74,7 @@
         <div class="field-row"><label for="planner-model">规划模型</label><select id="planner-model"></select></div>
         <div class="field-row"><label for="planner-effort">规划推理强度</label><select id="planner-effort"></select></div>
         <div class="field-row"><label for="max-planner-turns">规划次数上限</label><select id="max-planner-turns"><option value="1">1 次</option><option value="2">2 次</option><option value="3">3 次</option></select></div>
-        <p class="footnote advanced-note">保存仅更新设置，不启动模型。「仅规划」不会自动执行 Worker；只有宿主确认支持只读隔离及所选模型后才能启动规划。</p>
+        <p class="footnote advanced-note">保存仅更新设置，不启动模型。保存后，在当前聊天说「只规划：你的目标」，插件会核验并建立独立只读会话；启动会产生模型费用，计划回当前聊天确认，不自动执行 Worker。可在聊天要求停止或查询规划状态；超时不会自动重试。</p>
       </section>
       <details id="advanced" class="card advanced">
         <summary><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h4m4 0h10M3 12h10m4 0h4M3 18h4m4 0h10"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg></span><strong>高级设置</strong><span class="advanced-tag">高级</span><span id="coordinator-summary" class="summary-value">当前聊天</span></summary>
@@ -82,6 +82,7 @@
         <div id="coordinator-fields"><div class="divider full"></div><div class="field-row"><label for="coordinator-model">模型</label><select id="coordinator-model" aria-describedby="coordinator-description"></select></div><div class="divider"></div><div class="field-row"><label for="coordinator-effort">推理强度</label><select id="coordinator-effort"></select></div><p id="coordinator-description" class="footnote advanced-note"></p></div>
       </details>
     </fieldset>
+
     <div id="notice" class="notice" role="status" aria-live="polite">正在读取已保存配置…</div>
     <details class="storage-details"><summary>配置存储</summary><p id="storage"></p><p>与菜单栏共享项目配置。开发任务由当前聊天调度原生执行代理。</p></details>
   </main>

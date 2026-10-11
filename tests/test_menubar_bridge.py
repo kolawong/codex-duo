@@ -1,10 +1,10 @@
 # Test storage is deliberately independent of the user's real Codex home.
 import os as _test_os, tempfile as _test_tempfile, atexit as _test_atexit
-if not _test_os.environ.get('FUSION_TEST_CODEX_HOME'):
+if not _test_os.environ.get('CODEX_DUO_TEST_CODEX_HOME'):
     _test_home = _test_tempfile.TemporaryDirectory(prefix='duo-test-home-')
     _test_atexit.register(_test_home.cleanup)
-    _test_os.environ['FUSION_TEST_CODEX_HOME'] = _test_home.name
-_test_os.environ['CODEX_HOME'] = _test_os.environ['FUSION_TEST_CODEX_HOME']
+    _test_os.environ['CODEX_DUO_TEST_CODEX_HOME'] = _test_home.name
+_test_os.environ['CODEX_HOME'] = _test_os.environ['CODEX_DUO_TEST_CODEX_HOME']
 import importlib.util
 import json
 import os
@@ -16,14 +16,14 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-BRIDGE = ROOT / 'macos/Sources/FusionMenu/Resources/bridge.py'
+BRIDGE = ROOT / 'macos/Sources/CodexDuoMenu/Resources/bridge.py'
 spec = importlib.util.spec_from_file_location('menubar_bridge', BRIDGE)
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
-sys.path.insert(0, str(ROOT / 'plugins/fusion-minimal/skills/fusion/scripts'))
-from fusion_service import FusionService
-from fusion_selection import saved_workflow
-from fusion_selection import normalize_catalog, default_selection
+sys.path.insert(0, str(ROOT / 'plugins/codex-duo/skills/workflow/scripts'))
+from codex_duo_service import CodexDuoService
+from codex_duo_selection import saved_workflow
+from codex_duo_selection import normalize_catalog, default_selection
 
 
 class MenuBarBridgeTests(unittest.TestCase):
@@ -40,7 +40,7 @@ class MenuBarBridgeTests(unittest.TestCase):
              'visibility': 'list', 'supported_reasoning_levels': [{'effort': 'high'}, {'effort': 'low'}],
              'default_reasoning_level': 'high'}]}
         self.catalog = normalize_catalog(self.raw_catalog)
-        self.service = FusionService(self.root / '.fusion', lambda: self.catalog)
+        self.service = CodexDuoService(self.root / '.codex-duo', lambda: self.catalog)
         self.selection = default_selection(self.catalog)
         self.workflow = {'activation': 'automatic_project', 'coordinator_mode': 'current_thread',
                          'max_worker_turns': 5, 'max_parallel_workers': 1}
@@ -54,7 +54,7 @@ class MenuBarBridgeTests(unittest.TestCase):
         self.temp.cleanup()
 
     def invoke(self, request, root=None, unavailable=False, raw=False):
-        environment = {**os.environ, 'FUSION_CODEX_CLI': '/missing/codex' if unavailable else str(self.cli)}
+        environment = {**os.environ, 'CODEX_DUO_CODEX_CLI': '/missing/codex' if unavailable else str(self.cli)}
         process = subprocess.run([sys.executable, '-I', '-B', str(BRIDGE), '--project-root',
                                   str(self.root) if root is None else root],
                                  input=request if raw else json.dumps(request), text=True,
@@ -69,9 +69,9 @@ class MenuBarBridgeTests(unittest.TestCase):
         code, response = self.invoke({'operation': 'state'})
         self.assertEqual(0, code)
         self.assertEqual('none', response['data']['saved']['revision'])
-        self.assertFalse((self.root / '.fusion').exists())
+        self.assertFalse((self.root / '.codex-duo').exists())
         saved = self.service.save(self.body('none'))
-        path = self.root / '.fusion/selection.json'
+        path = self.root / '.codex-duo/selection.json'
         before = path.read_bytes()
         code, response = self.invoke({'operation': 'state'})
         self.assertEqual(saved['revision'], response['data']['saved']['revision'])
@@ -108,12 +108,12 @@ class MenuBarBridgeTests(unittest.TestCase):
 
     def test_stale_revision_preserves_current_file(self):
         self.service.save(self.body('none'))
-        before = (self.root / '.fusion/selection.json').read_bytes()
+        before = (self.root / '.codex-duo/selection.json').read_bytes()
         self.selection['worker']['reasoning_effort'] = 'low'
         code, response = self.invoke({'operation': 'save', 'body': self.body('none')})
         self.assertEqual(1, code)
         self.assertEqual('revision_conflict', response['error']['code'])
-        self.assertEqual(before, (self.root / '.fusion/selection.json').read_bytes())
+        self.assertEqual(before, (self.root / '.codex-duo/selection.json').read_bytes())
 
     def test_invalid_request_and_missing_revision(self):
         for request in ([], {'operation': 'execute'}, {'operation': 'save', 'body': {}}):
@@ -124,14 +124,14 @@ class MenuBarBridgeTests(unittest.TestCase):
         code, response = self.invoke('{broken', raw=True)
         self.assertEqual(1, code)
         self.assertEqual('invalid_request', response['error']['code'])
-        self.assertFalse((self.root / '.fusion').exists())
+        self.assertFalse((self.root / '.codex-duo').exists())
 
     def test_relative_and_missing_projects_rejected(self):
         for value in ('relative', str(self.root / 'missing')):
             code, response = self.invoke({'operation': 'state'}, root=value)
             self.assertEqual(1, code)
             self.assertEqual('invalid_project', response['error']['code'])
-        self.assertFalse((self.root / '.fusion').exists())
+        self.assertFalse((self.root / '.codex-duo').exists())
 
     def test_unavailable_catalog_is_visible_without_mutation(self):
         code, response = self.invoke({'operation': 'state'}, unavailable=True)
@@ -141,11 +141,11 @@ class MenuBarBridgeTests(unittest.TestCase):
         code, response = self.invoke({'operation': 'save', 'body': self.body('none')}, unavailable=True)
         self.assertEqual(1, code)
         self.assertEqual('catalog_unavailable', response['error']['code'])
-        self.assertFalse((self.root / '.fusion').exists())
+        self.assertFalse((self.root / '.codex-duo').exists())
 
     def test_invalid_saved_preferences_and_recovery_use_service(self):
-        (self.root / '.fusion').mkdir()
-        path = self.root / '.fusion/selection.json'
+        (self.root / '.codex-duo').mkdir()
+        path = self.root / '.codex-duo/selection.json'
         path.write_text('{broken')
         _, response = self.invoke({'operation': 'state'})
         saved = response['data']['saved']
@@ -153,25 +153,25 @@ class MenuBarBridgeTests(unittest.TestCase):
         self.assertEqual('{broken', path.read_text())
         code, response = self.invoke({'operation': 'save', 'body': self.body(saved['revision'])})
         self.assertEqual(0, code)
-        backup = self.root / '.fusion/history' / (saved['revision'] + '.json')
+        backup = self.root / '.codex-duo/history' / (saved['revision'] + '.json')
         self.assertEqual('{broken', backup.read_text())
 
     def test_project_code_cannot_shadow_shared_service(self):
-        (self.root / 'fusion_service.py').write_text('raise RuntimeError("untrusted code ran")')
+        (self.root / 'codex_duo_service.py').write_text('raise RuntimeError("untrusted code ran")')
         code, response = self.invoke({'operation': 'state'})
         self.assertEqual(0, code)
         self.assertEqual(str(self.root), response['data']['project_root'])
 
     def test_packaged_bridge_does_not_fall_back_to_surrounding_checkout(self):
-        location = self.root / 'Fusion Menu.app/Contents/Resources/bridge.py'
+        location = self.root / 'Codex Duo Menu.app/Contents/Resources/bridge.py'
         location.parent.mkdir(parents=True)
         location.write_text('')
         with patch.object(bridge, '__file__', str(location)):
             with self.assertRaises(RuntimeError):
                 bridge.service_scripts()
-            bundled = location.parent / 'fusion/scripts'
+            bundled = location.parent / 'workflow/scripts'
             bundled.mkdir(parents=True)
-            (bundled / 'fusion_service.py').write_text('')
+            (bundled / 'codex_duo_service.py').write_text('')
             self.assertEqual(bundled, bridge.service_scripts())
 
 

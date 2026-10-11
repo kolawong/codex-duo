@@ -9,16 +9,16 @@ import sys
 from urllib.parse import urlsplit, parse_qs
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'plugins/fusion-minimal/skills/fusion/scripts'
+SCRIPTS = ROOT / 'plugins/codex-duo/skills/workflow/scripts'
 sys.path.insert(0, str(SCRIPTS))
-from fusion_selection import (SelectionError, SelectionStore, read_catalog, default_selection,
+from codex_duo_selection import (SelectionError, SelectionStore, read_catalog, default_selection,
                               presets, prepare_handoff)
 
 
-from fusion_service import FusionService
+from codex_duo_service import CodexDuoService
 
 
-class PanelService(FusionService):
+class PanelService(CodexDuoService):
     def __init__(self, directory, catalog_loader=read_catalog):
         super().__init__(directory, catalog_loader)
         self.token = secrets.token_urlsafe(32)
@@ -77,7 +77,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         origin = self.headers.get('Origin')
         port = self.server.server_port
-        if not self.valid_host() or (origin and origin not in [f'http://127.0.0.1:{port}', f'http://localhost:{port}']) or not secrets.compare_digest(self.headers.get('X-Fusion-Token', ''), self.server.service.token):
+        if not self.valid_host() or (origin and origin not in [f'http://127.0.0.1:{port}', f'http://localhost:{port}']) or not secrets.compare_digest(self.headers.get('X-Codex-Duo-Token', ''), self.server.service.token):
             return self.fail(SelectionError('forbidden', '请求已过期或来源不受支持，请刷新面板。', 403))
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -105,10 +105,10 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
-    parser.add_argument('--state-dir', type=Path, default=ROOT / '.fusion')
+    parser.add_argument('--state-dir', type=Path, default=ROOT / '.codex-duo')
     args = parser.parse_args()
     server = PanelServer(('127.0.0.1', args.port), PanelService(args.state_dir))
-    print(f'Fusion panel: http://127.0.0.1:{server.server_port}', flush=True)
+    print(f'Codex Duo panel: http://127.0.0.1:{server.server_port}', flush=True)
     print(f'Local state: {args.state_dir} | Saving does not start tasks.', flush=True)
     try:
         server.serve_forever()

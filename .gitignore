@@ -10,11 +10,15 @@ __pycache__/
 node_modules/
 /macos/.build/
 /macos/dist/
+/codex-duo-*.zip
 /fusion-minimal-*.zip
 /FILES.txt
 
 # Local task state and generated evidence; keep validation inputs and reports
-/.fusion/
+/.codex-duo/
+/.fusion
+/.codex-duo-migration.lock
+/.codex-duo-migration.json
 /evidence/*
 !/evidence/bundled-models.json
 !/evidence/local-capabilities.json

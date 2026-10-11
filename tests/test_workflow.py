@@ -1,10 +1,10 @@
 # Test storage is deliberately independent of the user's real Codex home.
 import os as _test_os, tempfile as _test_tempfile, atexit as _test_atexit
-if not _test_os.environ.get('FUSION_TEST_CODEX_HOME'):
+if not _test_os.environ.get('CODEX_DUO_TEST_CODEX_HOME'):
     _test_home = _test_tempfile.TemporaryDirectory(prefix='duo-test-home-')
     _test_atexit.register(_test_home.cleanup)
-    _test_os.environ['FUSION_TEST_CODEX_HOME'] = _test_home.name
-_test_os.environ['CODEX_HOME'] = _test_os.environ['FUSION_TEST_CODEX_HOME']
+    _test_os.environ['CODEX_DUO_TEST_CODEX_HOME'] = _test_home.name
+_test_os.environ['CODEX_HOME'] = _test_os.environ['CODEX_DUO_TEST_CODEX_HOME']
 """Saved defaults and automatic project routing; no model calls."""
 import copy
 import json
@@ -14,9 +14,9 @@ import unittest
 from unittest.mock import patch
 
 from test_native import mcp, catalog
-from fusion_service import FusionService
-from fusion_selection import SelectionError
-from fusion_selection import saved_workflow
+from codex_duo_service import CodexDuoService
+from codex_duo_selection import SelectionError
+from codex_duo_selection import saved_workflow
 
 
 class WorkflowTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class WorkflowTests(unittest.TestCase):
         _environment.start(); self.addCleanup(_environment.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
-        self.service = FusionService(self.root / '.fusion', catalog)
+        self.service = CodexDuoService(self.root / '.codex-duo', catalog)
         self.server = mcp.MCPServer(self.service)
         self.selection = self.service.state()['default']
         self.workflow = {'activation': 'automatic_project', 'coordinator_mode': 'current_thread',
@@ -57,7 +57,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_saved_defaults_survive_new_service_without_reconfiguration(self):
         saved = self.save()
-        another = FusionService(self.root / '.fusion', catalog)
+        another = CodexDuoService(self.root / '.codex-duo', catalog)
         before = self.service.store.path.read_bytes()
         value = another.defaults(str(self.root))
         self.assertTrue(value['configured'])
@@ -193,16 +193,16 @@ class WorkflowTests(unittest.TestCase):
 
     def test_new_tools_are_discoverable_and_validate_before_writing(self):
         definitions = {t['name']:t for t in mcp.tool_definitions()}
-        for name in ('fusion.defaults','fusion.begin'):
+        for name in ('codex_duo_defaults','codex_duo_begin'):
             self.assertIn('model', definitions[name]['_meta']['ui']['visibility'])
-        self.assertTrue(definitions['fusion.defaults']['annotations']['readOnlyHint'])
-        self.assertFalse(definitions['fusion.begin']['annotations']['readOnlyHint'])
+        self.assertTrue(definitions['codex_duo_defaults']['annotations']['readOnlyHint'])
+        self.assertFalse(definitions['codex_duo_begin']['annotations']['readOnlyHint'])
         saved = self.save()
         for workflow in ({**self.workflow,'max_worker_turns':True}, {**self.workflow,'activation':'all'}):
-            value = self.call('fusion.save', {'selection':self.selection,'workflow':workflow,
+            value = self.call('codex_duo_save', {'selection':self.selection,'workflow':workflow,
                                              'expected_revision':saved['revision']})
             self.assertTrue(value['isError'])
-        value = self.call('fusion.begin', {'project_root':str(self.root),'task':self.task,'invocation':'automatic'})
+        value = self.call('codex_duo_begin', {'project_root':str(self.root),'task':self.task,'invocation':'automatic'})
         self.assertFalse(value['structuredContent']['execution_started'])
 
     def test_preparation_and_read_never_execute_task_commands(self):

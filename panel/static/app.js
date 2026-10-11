@@ -16,9 +16,9 @@ function notice(text = '', error = false) {
   $('notice').setAttribute('role', error ? 'alert' : 'status');
 }
 async function request(path, body) {
-  if (window.fusionTransport) return window.fusionTransport.request(path, body);
+  if (window.codexDuoTransport) return window.codexDuoTransport.request(path, body);
   const response = await fetch(path, body === undefined ? {cache:'no-store'} : {
-    method:'POST', headers:{'Content-Type':'application/json','X-Fusion-Token':state.csrf_token}, body:JSON.stringify(body)
+    method:'POST', headers:{'Content-Type':'application/json','X-Codex-Duo-Token':state.csrf_token}, body:JSON.stringify(body)
   });
   const data = await response.json();
   if (!response.ok) {const error = new Error(data.error?.message || '本地请求失败，请重试。'); error.code = data.error?.code; throw error;}
@@ -26,7 +26,8 @@ async function request(path, body) {
 }
 function restoreDraft() {
   draft = clone(state.saved.document?.selection || state.default);
-  workflow = {max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...clone(state.workflow)};
+  const {completion_mode, ...currentWorkflow} = clone(state.workflow);
+  workflow = { max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...currentWorkflow};
   if (!state.saved.document && !state.effective?.document && !state.saved.error) workflow.activation = 'manual';
   enableRequested = false;
   baseline = {selection:clone(draft), workflow:clone(workflow), revision:state.saved.revision, globalRevision:state.global_revision};
@@ -108,7 +109,7 @@ async function load(mode = 'initial', scope = state?.scope) {
   const keepDraft = Boolean(draft && (dirty() || conflict));
   busy = true; render();
   try {
-    const latest = mode === 'initial' && window.fusionTransport ? await window.fusionTransport.initial() : await request('/api/state' + (scope ? '?scope=' + scope : ''));
+    const latest = mode === 'initial' && window.codexDuoTransport ? await window.codexDuoTransport.initial() : await request('/api/state' + (scope ? '?scope=' + scope : ''));
     if (!latest.catalog) {connected=false; notice(latest.error?.message || '模型目录读取失败，请刷新重试。', true); return;}
     if (state?.project_root && latest.project_root !== state.project_root) throw new Error('项目不一致，原项目和修改已保留。');
     state = latest; connected = true;
@@ -116,7 +117,7 @@ async function load(mode = 'initial', scope = state?.scope) {
     else if (state.saved.revision !== baseline.revision || state.global_revision !== baseline.globalRevision) conflict = true;
     notice(conflict ? conflictMessage : (state.saved.error || (state.scope !== 'global' ? state.effective?.error : null))?.message || (mode === 'restore' ? '已重新载入最新配置。' : mode === 'refresh' && keepDraft ? '已刷新，未保存的修改已保留。' : ''), conflict || Boolean(state.saved.error || (state.scope !== 'global' ? state.effective?.error : null)));
     if (!valid() && !conflict) notice('当前配置包含不再支持的组合，请更新。', true);
-  } catch (error) {connected = false; notice(window.fusionTransport ? error.message : '无法连接本地服务，请确认服务运行后刷新。', true);}
+  } catch (error) {connected = false; notice(window.codexDuoTransport ? error.message : '无法连接本地服务，请确认服务运行后刷新。', true);}
   finally {busy = false; render();}
 }
 function edited() {notice(conflict ? conflictMessage : '', conflict); render();}

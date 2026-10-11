@@ -1,10 +1,10 @@
 # Test storage is deliberately independent of the user's real Codex home.
 import os as _test_os, tempfile as _test_tempfile, atexit as _test_atexit
-if not _test_os.environ.get('FUSION_TEST_CODEX_HOME'):
+if not _test_os.environ.get('CODEX_DUO_TEST_CODEX_HOME'):
     _test_home = _test_tempfile.TemporaryDirectory(prefix='duo-test-home-')
     _test_atexit.register(_test_home.cleanup)
-    _test_os.environ['FUSION_TEST_CODEX_HOME'] = _test_home.name
-_test_os.environ['CODEX_HOME'] = _test_os.environ['FUSION_TEST_CODEX_HOME']
+    _test_os.environ['CODEX_DUO_TEST_CODEX_HOME'] = _test_home.name
+_test_os.environ['CODEX_HOME'] = _test_os.environ['CODEX_DUO_TEST_CODEX_HOME']
 import copy
 import json
 from pathlib import Path
@@ -14,10 +14,10 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'plugins/fusion-minimal/skills/fusion/scripts'))
-from fusion_selection import (SelectionError, SelectionStore, normalize_catalog, presets,
+sys.path.insert(0, str(ROOT / 'plugins/codex-duo/skills/workflow/scripts'))
+from codex_duo_selection import (SelectionError, SelectionStore, normalize_catalog, presets,
                               default_selection, validate_selection, prepare_handoff)
-from fusion import demo, verify
+from codex_duo import demo, verify
 sys.path.insert(0, str(ROOT))
 from panel.server import PanelService
 
@@ -44,7 +44,7 @@ class SelectionTests(unittest.TestCase):
         self.catalog = catalog()
         self.selection = default_selection(self.catalog)
         self.store = SelectionStore(self.root / 'state')
-        self.task = json.loads((ROOT / 'plugins/fusion-minimal/skills/fusion/templates/task.json').read_text())
+        self.task = json.loads((ROOT / 'plugins/codex-duo/skills/workflow/templates/task.json').read_text())
 
     def tearDown(self):
         self.temp.cleanup()
@@ -103,7 +103,7 @@ class SelectionTests(unittest.TestCase):
     def test_atomic_write_failure_preserves_saved_config(self):
         saved = self.save()
         self.selection['worker']['reasoning_effort'] = 'medium'
-        with patch('fusion_selection.os.replace', side_effect=OSError('disk unavailable')):
+        with patch('codex_duo_selection.os.replace', side_effect=OSError('disk unavailable')):
             with self.assertRaises(OSError): self.store.save(self.selection, self.catalog, saved['revision'])
         self.assertEqual(saved['revision'], self.store.read(self.catalog)['revision'])
         self.assertEqual([], list(self.store.directory.glob('.selection-*')))
@@ -167,7 +167,7 @@ class SelectionTests(unittest.TestCase):
         import tomllib
         result = self.prepare()
         main = tomllib.loads((Path(result['path']) / 'config/project.toml').read_text())
-        worker = tomllib.loads((Path(result['path']) / 'config/fusion_worker.toml').read_text())
+        worker = tomllib.loads((Path(result['path']) / 'config/codex_duo_worker.toml').read_text())
         self.assertEqual(self.selection['coordinator']['model'], main['model'])
         self.assertEqual(self.selection['worker']['reasoning_effort'], worker['model_reasoning_effort'])
         self.assertFalse(main['agents']['enabled']); self.assertFalse(main['features']['hooks'])

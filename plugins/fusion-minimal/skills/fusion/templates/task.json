@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "task_id": "fusion-demo-001",
-  "goal": "Correct add(a, b) so it returns a + b.",
-  "allowed_paths": ["math_ops.py"],
-  "acceptance": ["Positive and negative inputs pass the existing tests.", "Only math_ops.py changes."],
-  "tests": [["python3", "-B", "-m", "unittest", "-v", "test_math_ops.py"]]
-}
