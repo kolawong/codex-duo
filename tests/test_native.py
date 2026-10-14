@@ -24,6 +24,9 @@ from codex_duo_selection import normalize_catalog, SelectionError
 from codex_duo_service import CodexDuoService
 from panel.server import PanelService
 
+DELEGATION_ASSESSMENT = {'complexity': 'complex', 'benefit': 'clear', 'independent': True,
+                         'reason': 'Offline fixture: independent implementation and integration checks justify a bounded handoff.'}
+
 
 def catalog():
     return normalize_catalog({'models': [
@@ -96,7 +99,7 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(tools['codex_duo_open']['icons'][0]['src'].split(',', 1)[1]),
             (ROOT / 'plugins/codex-duo/assets/tandem.png').read_bytes())
         self.assertEqual(tools['codex_duo_open']['icons'][0]['mimeType'], 'image/png')
-        self.assertEqual(self.rpc('initialize')['result']['serverInfo']['version'], '0.9.9')
+        self.assertEqual(self.rpc('initialize')['result']['serverInfo']['version'], '0.10.0')
         self.assertEqual(mcp.RESOURCE, 'ui://codex-duo/model-desk-v4')
         public = json.loads((ROOT / 'plugins/codex-duo/plugin.json').read_text())
         native = json.loads((ROOT / 'plugins/codex-duo/.codex-plugin/plugin.json').read_text())
@@ -104,7 +107,7 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(interface, native['interface'])
         for manifest in (public, native):
             self.assertEqual(manifest['name'], 'codex-duo')
-            self.assertEqual(manifest['version'], '0.9.9')
+            self.assertEqual(manifest['version'], '0.10.0')
             interface = manifest.get('interface') or manifest['extensions']['com.openai']['interface']
             self.assertIn('max_parallel_workers', interface['defaultPrompt'])
             self.assertIn('shared total max_worker_turns', interface['defaultPrompt'])

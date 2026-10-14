@@ -1,6 +1,6 @@
 {
   "name": "codex-duo",
-  "version": "0.9.9",
+  "version": "0.10.0",
   "description": "Codex Duo 全局默认与项目设置，一个规划，一个执行。",
   "skills": "./skills/",
   "interface": {

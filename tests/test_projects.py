@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from test_native import mcp, catalog
+from test_native import mcp, catalog, DELEGATION_ASSESSMENT
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError
 from codex_duo_projects import START, END, BLOCK, project_path
@@ -113,7 +113,8 @@ class ProjectTests(unittest.TestCase):
         link = self.base / 'link'; link.symlink_to(self.b)
         with self.assertRaises(SelectionError): project_path(link)
         self.save(self.a)
-        begun = self.call('codex_duo_begin', self.a, task=self.service.template, invocation='automatic')['structuredContent']
+        begun = self.call('codex_duo_begin', self.a, task=self.service.template, invocation='automatic',
+                          assessment=DELEGATION_ASSESSMENT)['structuredContent']
         with self.assertRaises(SelectionError): self.call('codex_duo_execution_plan', self.b, handoff_id=begun['handoff_id'])
         self.assertFalse((self.b / '.codex-duo').exists())
         with self.assertRaises(SelectionError): self.service.save({'project_root':str(self.b), 'selection':self.selection, 'expected_revision':'none'})

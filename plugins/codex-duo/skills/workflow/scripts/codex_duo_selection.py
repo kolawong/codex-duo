@@ -121,6 +121,7 @@ def default_selection(catalog):
 
 DEFAULT_WORKFLOW = {'activation': 'manual', 'coordinator_mode': 'current_thread',
                     'max_worker_turns': 3, 'max_parallel_workers': 1, 'completion_mode': 'return',
+                    'agent_activity': 'balanced',
                     'planner_mode': 'disabled', 'planner_model': '',
                     'planner_reasoning_effort': '', 'max_planner_turns': 1}
 
@@ -134,6 +135,8 @@ def validate_workflow(value, *, legacy_completion=False):
         raise SelectionError('invalid_completion_mode', '完成流程仅支持 return，由原聊天等待并验收。')
     if value['activation'] not in ('automatic_project', 'manual'):
         raise SelectionError('invalid_workflow', '使用方式必须为项目自动使用或手动使用。')
+    if value.get('agent_activity', 'balanced') not in ('conservative', 'balanced', 'aggressive'):
+        raise SelectionError('invalid_workflow', '代理积极程度必须为 conservative、balanced 或 aggressive。')
     if value['coordinator_mode'] not in ('current_thread', 'selected_model'):
         raise SelectionError('invalid_workflow', '主控方式必须为当前聊天或指定模型。')
     if type(value['max_worker_turns']) is not int or not 1 <= value['max_worker_turns'] <= 10:
@@ -151,6 +154,60 @@ def validate_workflow(value, *, legacy_completion=False):
             raise SelectionError('invalid_workflow', '启用仅规划模式前必须选择规划模型和推理强度。')
     # Preserve legacy serialization for immutable snapshot hashes.
     return dict(value)
+
+
+ACTIVITIES = ('conservative', 'balanced', 'aggressive')
+ASSESSMENT_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'complexity': {'type': 'string', 'enum': ['simple', 'moderate', 'complex']},
+        'benefit': {'type': 'string', 'enum': ['none', 'possible', 'clear']},
+        'independent': {'type': 'boolean'},
+        'reason': {'type': 'string'},
+    },
+    'required': ['complexity', 'benefit', 'independent', 'reason'],
+    'additionalProperties': False,
+}
+
+
+def validate_assessment(value):
+    if not isinstance(value, dict) or set(value) != set(ASSESSMENT_SCHEMA['required']):
+        raise SelectionError('invalid_assessment', '请提供当前聊天对任务复杂度、交接收益、独立执行能力和具体原因的判断。')
+    if (value['complexity'] not in ('simple', 'moderate', 'complex')
+            or value['benefit'] not in ('none', 'possible', 'clear')
+            or type(value['independent']) is not bool
+            or not isinstance(value['reason'], str)
+            or not value['reason'].strip() or len(value['reason']) > 600):
+        raise SelectionError('invalid_assessment', '派发判断无效；原因须为 1 到 600 字的具体说明。')
+    return dict(value)
+
+
+def delegation_decision(activity, invocation, assessment=None):
+    """Explicit delegation overrides inclination, never scope or execution limits."""
+    if activity not in ACTIVITIES:
+        raise SelectionError('invalid_workflow', '代理积极程度必须为保守、均衡或积极。')
+    if invocation not in ('automatic', 'explicit'):
+        raise SelectionError('invalid_invocation', '请说明由项目默认流程还是用户明确要求启用。')
+    if assessment is not None:
+        assessment = validate_assessment(assessment)
+    if invocation == 'explicit':
+        decision, reason = 'delegate', '用户本次明确要求使用代理；仍遵守任务范围、模型与预算上限。'
+    elif assessment is None:
+        raise SelectionError('assessment_required', '自动派发前须由当前聊天先判断必要性并传入 assessment；简单任务直接完成，不启动额外规划代理。', 409)
+    elif assessment['complexity'] == 'simple':
+        decision, reason = 'local', '任务简单，由当前聊天直接完成。'
+    elif not assessment['independent']:
+        decision, reason = 'local', '工作尚不能独立交接，由当前聊天继续处理。'
+    elif assessment['benefit'] == 'none':
+        decision, reason = 'local', '交接没有明确收益，由当前聊天直接完成。'
+    elif activity == 'conservative' and (assessment['complexity'] != 'complex' or assessment['benefit'] != 'clear'):
+        decision, reason = 'local', '保守模式仅委派复杂且收益明确的独立工作。'
+    elif activity == 'balanced' and assessment['benefit'] != 'clear':
+        decision, reason = 'local', '均衡模式在交接收益明确时才派代理。'
+    else:
+        decision, reason = 'delegate', '任务可独立执行，交接收益符合当前代理积极程度。'
+    return {'agent_activity': activity, 'invocation': invocation, 'assessment': assessment,
+            'decision': decision, 'reason': reason}
 
 
 def validate_planner_selection(workflow, catalog):
@@ -349,7 +406,7 @@ def validate_task(task):
 
 
 def prepare_handoff(task, selection, catalog, destination, revision, workflow=None, *, legacy_completion=False,
-                    worker_resolution=None):
+                    worker_resolution=None, delegation=None):
     task = validate_task(task)
     selection = validate_selection(selection, catalog)
     payload = {'schema_version': 1, 'task': task, 'selection': selection,
@@ -358,6 +415,13 @@ def prepare_handoff(task, selection, catalog, destination, revision, workflow=No
         payload['workflow'] = validate_workflow(workflow, legacy_completion=legacy_completion)
     if worker_resolution is not None:
         payload['worker_resolution'] = worker_resolution
+    if delegation is not None:
+        if (not isinstance(delegation, dict) or workflow is None
+                or delegation != delegation_decision(workflow.get('agent_activity', 'balanced'),
+                                                       delegation.get('invocation'), delegation.get('assessment'))
+                or delegation['decision'] != 'delegate'):
+            raise SelectionError('invalid_assessment', '交接必须包含有效的派发判断。')
+        payload['delegation'] = delegation
     identifier = digest(payload)[:24]
     root = safe_directory(destination)
     target = root / identifier

@@ -6,6 +6,7 @@ from codex_duo_projects import project_path, opt_in_status, enable_and_save, ins
 from codex_duo_selection import (SelectionError, SelectionStore, read_catalog, default_selection,
                               presets, prepare_handoff, digest, validate_selection, saved_workflow, validate_workflow, validate_task)
 from codex_duo_worker import validate_override, worker_summary
+from codex_duo_selection import delegation_decision, validate_assessment, ACTIVITIES
 
 
 class CodexDuoService:
@@ -100,6 +101,16 @@ class CodexDuoService:
                 'next_tool': 'codex_duo_begin', 'execution_started': False,
                 'instructions': 'Use these saved settings for the authorized task. Do not reopen settings, '
                     'ask for JSON or handoff paths, or request the same approval again. '
+                    'First assess delegation necessity in the current chat using workflow.agent_activity '
+                    '(conservative/balanced/aggressive). Simple tasks stay in this chat at every level. '
+                    'Conservative delegates only complex independent work with clear benefit; balanced requires '
+                    'clear benefit; aggressive also accepts possible benefit for non-simple independent work. '
+                    'Consider context handoff and verification cost, not file/line count alone. '
+                    'Honor explicit no-agent requests. Use invocation=explicit only when the user explicitly '
+                    'requests delegation, not merely implementation. For automatic begin supply assessment '
+                    '{complexity:simple|moderate|complex,benefit:none|possible|clear,independent:boolean,reason:string}. '
+                    'If unnecessary, finish locally without begin/plan/reserve; never launch a classifier or Planner. '
+                    'Briefly explain the decision; activity never changes models, efforts or budgets. '
                     'Discover a native worker tool before dispatch; this MCP server does not launch models.'}
 
     def begin(self, body):
@@ -110,10 +121,11 @@ class CodexDuoService:
         invocation = body.get('invocation')
         if invocation not in ('automatic', 'explicit'):
             raise SelectionError('invalid_invocation', '请说明由项目默认流程还是用户明确要求启用。')
+        assessment = validate_assessment(body['assessment']) if 'assessment' in body else None
         with self.defaults_store.global_store.lock, self.store.lock:
             # Resolve identity before today's defaults: retries keep their immutable
             # choice and budget even after a settings change or service restart.
-            existing = self.existing_task(task, override)
+            existing = self.existing_task(task, override, invocation, assessment)
             if existing:
                 return self.begin_view(existing, False)
             catalog = self.catalog_loader()
@@ -121,8 +133,13 @@ class CodexDuoService:
             workflow = saved_workflow(saved['document'])
             if invocation == 'automatic' and workflow['activation'] != 'automatic_project':
                 raise SelectionError('manual_mode', '当前为手动模式，仅在用户要求使用 Codex Duo 时启用。', 409)
+            delegation = delegation_decision(workflow['agent_activity'], invocation, assessment)
+            if delegation['decision'] == 'local':
+                return {'state': 'current_thread', 'project_root': str(self.store.directory.parent.resolve()),
+                        'delegation': delegation, 'created': False, 'execution_started': False,
+                        'next_tool': None, 'instructions': delegation['reason'] + ' 不创建交接、不保留派发名额；完成后按正常要求验证。'}
             prepared = prepare_handoff(task, selection, catalog, self.store.directory / 'handoffs',
-                                       saved['revision'], workflow, worker_resolution=resolution)
+                                       saved['revision'], workflow, worker_resolution=resolution, delegation=delegation)
             return self.begin_view(prepared['id'], prepared['created'])
 
     def begin_view(self, identifier, created):
@@ -131,7 +148,7 @@ class CodexDuoService:
                 'evidence_root': str(self.store.directory / 'runs' / identifier),
                 'task_path': str(path / 'task.json')}
 
-    def existing_task(self, task, override):
+    def existing_task(self, task, override, invocation=None, assessment=None):
         """Project lock held. Preserve old records; no new ledger for an existing ID."""
         root = self.store.directory / 'handoffs'
         if root.is_symlink():
@@ -158,6 +175,11 @@ class CodexDuoService:
                 continue
             if manifest.get('worker_resolution', {}).get('override', {}) != override:
                 raise SelectionError('task_conflict', '同一 task_id 的 Worker 覆盖冲突；不能更换模型或重置预算。', 409)
+            if 'delegation' in manifest:
+                original = manifest['delegation']
+                if (invocation != original['invocation']
+                        or (assessment is not None and assessment != original['assessment'])):
+                    raise SelectionError('task_conflict', '同一 task_id 的派发判断冲突；保留原快照与预算。', 409)
             matches.append(identifier)
         if len(matches) > 1:
             raise SelectionError('task_conflict', '同一 task_id 已有多个历史快照，请保留原记录并核对预算。', 409)
@@ -199,7 +221,9 @@ class CodexDuoService:
         properties.update({
             'activation': {'type': 'string', 'title': '使用方式',
                 'enum': ['automatic_project', 'manual'],
-                'description': '全局默认：automatic_project 让各项目开发任务自动使用；manual 仅明确请求时使用。项目覆盖优先。'},
+                'description': '全局默认：automatic_project 先判断是否值得派代理；manual 仅明确请求时使用。项目覆盖优先。'},
+            'agent_activity': {'type': 'string', 'title': '代理积极程度', 'enum': list(ACTIVITIES),
+                'description': '保守：仅复杂且收益明确时委派；均衡（默认）：有明确收益时委派；积极：也尝试有潜在收益的独立工作。简单任务始终由当前聊天完成；不改变模型和预算。'},
             'coordinator_mode': {'type': 'string', 'title': '主控方式',
                 'enum': ['current_thread', 'selected_model'],
                 'description': 'current_thread：当前聊天规划验收；selected_model：另开聊天使用指定主控。'},
@@ -291,6 +315,8 @@ class CodexDuoService:
                 payload['workflow'] = manifest['workflow']
             if 'worker_resolution' in manifest:
                 payload['worker_resolution'] = manifest['worker_resolution']
+            if 'delegation' in manifest:
+                payload['delegation'] = manifest['delegation']
             if digest(payload)[:24] != identifier or manifest.get('handoff_id') != identifier:
                 raise ValueError('digest')
             if catalog['fingerprint'] != manifest['catalog_fingerprint']:
@@ -299,7 +325,7 @@ class CodexDuoService:
             # Existing path: verify every immutable artifact, never modify it.
             result = prepare_handoff(manifest['task'], manifest['selection'], catalog, root,
                                      manifest['selection_revision'], manifest.get('workflow'), legacy_completion=True,
-                                     worker_resolution=manifest.get('worker_resolution'))
+                                     worker_resolution=manifest.get('worker_resolution'), delegation=manifest.get('delegation'))
             if result['created']:
                 raise ValueError('missing snapshot')
         except (OSError, KeyError, TypeError, ValueError) as exc:
@@ -319,6 +345,8 @@ class CodexDuoService:
                     'worker_summary': worker_summary(manifest['selection']['worker'], manifest.get('worker_resolution')),
                     'max_worker_turns': workflow['max_worker_turns'],
                     'max_parallel_workers': workflow['max_parallel_workers'],
+                    'agent_activity': workflow['agent_activity'],
+                    'delegation': manifest.get('delegation'),
                     'completion_mode': workflow['completion_mode'],
                     'next_tool': 'codex_duo_plan' if current else None, 'task': manifest['task'],
                     'handoff_kind': 'workflow_snapshot',

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'plugins/codex-duo/skills/workflow/scripts'))
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError, normalize_catalog, default_selection, prepare_handoff
+from test_native import DELEGATION_ASSESSMENT
 
 
 class ParallelTests(unittest.TestCase):
@@ -28,7 +29,8 @@ class ParallelTests(unittest.TestCase):
         self.workflow = {'activation':'automatic_project', 'coordinator_mode':'current_thread', 'max_worker_turns':3, 'max_parallel_workers':3}
         self.selection = default_selection(self.catalog)
         self.service.save({'selection':self.selection,'workflow':self.workflow,'expected_revision':'none'})
-        self.plan = self.service.begin({'project_root':str(self.root), 'task':self.task,'invocation':'automatic'})
+        self.plan = self.service.begin({'project_root':str(self.root), 'task':self.task,'invocation':'automatic',
+                                       'assessment': DELEGATION_ASSESSMENT})
         self.base = {'project_root':str(self.root), 'handoff_id':self.plan['handoff_id']}
 
     def tearDown(self):
@@ -177,7 +179,8 @@ class ParallelTests(unittest.TestCase):
             current=self.service.store.read(self.catalog)
             self.service.save({'selection':self.selection,'workflow':{**self.workflow,'max_parallel_workers':limit},'expected_revision':current['revision']})
             parent={**self.task,'task_id':'limit-'+str(limit)}
-            plan=self.service.begin({'project_root':str(self.root),'task':parent,'invocation':'automatic'})
+            plan=self.service.begin({'project_root':str(self.root),'task':parent,'invocation':'automatic',
+                                     'assessment': DELEGATION_ASSESSMENT})
             self.base['handoff_id']=plan['handoff_id']
             self.assertEqual(limit,self.call('plan',host_capacity=3,workstreams=self.streams())['max_simultaneous_workers'])
             for sid in ['a','b'][:limit]:self.call('reserve',host_capacity=3,workstream_id=sid)

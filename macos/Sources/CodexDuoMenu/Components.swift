@@ -380,6 +380,75 @@ struct MenuAnchor: NSViewRepresentable {
 
 // MARK: - Segmented control and stepper
 
+struct AgentActivitySlider: View {
+    @Binding var selection: String
+    var changed = false
+    @FocusState private var focused: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    private let blue = Color(red: 0.61, green: 0.78, blue: 0.99)
+    private var activity: AgentActivity? { AgentActivity(rawValue: selection) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("代理积极程度").foregroundStyle(Theme.fg)
+                if changed {
+                    Circle().fill(Theme.amber).frame(width: 5, height: 5)
+                        .accessibilityLabel("已修改")
+                }
+                Spacer()
+                Text(activity?.title ?? "不可用").foregroundStyle(Theme.fg2)
+            }
+            .font(.system(size: 12.5))
+            Slider(value: Binding(get: { activity?.sliderValue ?? 1 }, set: { value in
+                if let next = AgentActivity.at(value) { selection = next.rawValue }
+            }), in: 0...2, step: 1) { Text("代理积极程度") }
+                .labelsHidden()
+                .controlSize(.regular)
+                .tint(blue)
+                .frame(height: 26)
+                // Keep the native three-step input and accessibility, drawing only
+                // its appearance here so macOS tick marks do not replace the round thumb.
+                .overlay {
+                    GeometryReader { geometry in
+                        let travel = max(0, geometry.size.width - 16)
+                        let position = travel * (activity?.sliderValue ?? 1) / 2
+                        ZStack(alignment: .topLeading) {
+                            Theme.card
+                            Capsule().fill(Theme.segThumb).frame(width: travel, height: 4).offset(x: 8, y: 11)
+                            Capsule().fill(blue).frame(width: position, height: 4).offset(x: 8, y: 11)
+                                .opacity(isEnabled ? 1 : 0.45)
+                            Circle().fill(blue).overlay(Circle().strokeBorder(blue.opacity(0.7), lineWidth: 1))
+                                .frame(width: 16, height: 16).offset(x: position, y: 5)
+                                .opacity(isEnabled ? 1 : 0.45)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+                .focused($focused)
+                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(focused ? blue : .clear, lineWidth: 2)
+                    .padding(-3).allowsHitTesting(false))
+                .accessibilityValue(activity?.title ?? "不可用")
+                .accessibilityHint(activity?.description ?? "请选择保守、均衡或积极")
+            HStack {
+                Text(AgentActivity.conservative.title)
+                Spacer()
+                Text(AgentActivity.balanced.title)
+                Spacer()
+                Text(AgentActivity.aggressive.title)
+            }
+            .font(.system(size: 11)).foregroundStyle(Theme.muted)
+            .accessibilityHidden(true)
+            Text(activity?.description ?? "请选择保守、均衡或积极。")
+                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 3)
+        }
+        .padding(12)
+    }
+}
+
 struct SegmentOption: Identifiable {
     var id: String
     var title: String

@@ -33,12 +33,13 @@ class Element {
 async function harness(transport='mcp', first=snapshot()) {
   const elements=new Map([...html.matchAll(/id="([^"]+)"/g)].map(match=>[match[1],new Element(match[1])]));
   const doc=new Element();doc.documentElement=new Element();doc.getElementById=id=>{assert.ok(elements.has(id),`Missing control ${id}`);return elements.get(id);};doc.createElement=()=>new Element();
-  let latest=copy(first), failRead=false, failSave=null;
+  let latest=copy(first), failRead=false, failSave=null, resetState=null;
   const calls=[];
   const serve=async(path,body)=>{
     calls.push({path,body:copy(body || null)});
     if(path.split('?')[0]==='/api/state'){if(failRead) throw new Error('offline');return {...copy(latest),...(path.includes('?') ? {scope:path.split('=')[1]} : {})};}
     if(failSave) throw Object.assign(new Error(failSave),{code:failSave});
+    if(path==='/api/reset'){assert.ok(resetState,'reset fixture required');latest=copy(resetState);return copy(latest);}
     latest.saved={revision:`r${calls.length+1}`,changed:true,document:{selection:copy(body.selection),workflow:copy(body.workflow)}};
     if(body.enable_project) latest.project_opt_in={enabled:true,error:null};
     latest.saved.project_opt_in=copy(latest.project_opt_in);
@@ -70,7 +71,7 @@ async function harness(transport='mcp', first=snapshot()) {
   const control=id=>elements.get(id);
   const fire=async(id,type='click',value)=>{const target=id==='document'?doc:control(id);if(value!==undefined)target.value=String(value);await target.events[type]({target,key:'s',metaKey:true,preventDefault(){}});await settle();};
   await settle();
-  return {control,fire,calls,settle,root:doc.documentElement,host:context.host,set latest(value){latest=copy(value);},get latest(){return copy(latest);},set failRead(value){failRead=value;},set failSave(value){failSave=value;}};
+  return {control,fire,calls,settle,root:doc.documentElement,host:context.host,set latest(value){latest=copy(value);},get latest(){return copy(latest);},set resetState(value){resetState=copy(value);},set failRead(value){failRead=value;},set failSave(value){failSave=value;}};
 }
 for(const transport of ['mcp','http']) {
   const h=await harness(transport);
@@ -257,3 +258,76 @@ for (const transport of ['mcp','http']) {
   }
 }
 console.log('Return-only panel: removed controls/routes and legacy preference reads passed.');
+
+assert.match(html, /<label for="agent-activity">代理积极程度<\/label>/);
+assert.match(html, /id="agent-activity" type="range" min="0" max="2" step="1"/);
+assert.match(html, /aria-describedby="agent-activity-description"/);
+for (const transport of ['mcp','http']) {
+  const legacy = await harness(transport);
+  assert.equal(legacy.control('agent-activity').value,'1');
+  assert.equal(legacy.control('agent-activity-value').textContent,'均衡');
+  assert.equal(legacy.control('save').disabled,true,'missing activity stays clean');
+  await legacy.fire('save');
+  assert.equal(legacy.calls.filter(c=>c.path==='/api/selection').length,0,'legacy read does not write defaults');
+  assert.equal(legacy.latest.saved.document.workflow.agent_activity,undefined);
+  const values=['conservative','balanced','aggressive'], titles=['保守','均衡','积极'];
+  for (const scope of ['global','project']) {
+    for (const [index, activity] of values.entries()) {
+      const first=snapshot(); first.scope=scope;first.source=scope;first.global_revision='g1';
+      first.workflow.agent_activity=values[(index+1)%3];
+      first.saved.document.workflow.agent_activity=first.workflow.agent_activity;
+      const h=await harness(transport,first);
+      await h.fire('agent-activity','input',index);
+      assert.equal(h.control('agent-activity-value').textContent,titles[index]);
+      assert.equal(h.control('agent-activity').attributes['aria-valuetext'],titles[index]);
+      assert.ok(h.control('agent-activity-description').textContent.length>5);
+      assert.equal(h.control('draft-state').textContent,'1 项修改未保存');
+      await h.fire('refresh');
+      assert.equal(h.control('agent-activity').value,String(index),'same revision keeps activity draft');
+      await h.fire('save');
+      const save=h.calls.find(c=>c.path==='/api/selection');
+      assert.equal(save.body.scope,scope);
+      assert.equal(save.body.workflow.agent_activity,activity);
+      assert.deepEqual(save.body.selection,selection,'activity leaves models and efforts intact');
+      assert.deepEqual({...save.body.workflow,agent_activity:undefined},
+        {...workflow,planner_mode:'disabled',planner_model:'',planner_reasoning_effort:'',max_planner_turns:1,agent_activity:undefined},
+        'activity leaves activation, planner and budgets intact');
+      assert.equal(h.control('save').disabled,true);
+      await h.fire('refresh');
+      assert.equal(h.control('agent-activity-value').textContent,titles[index]);
+    }
+  }
+  const conflict=await harness(transport);
+  await conflict.fire('agent-activity','input',2);
+  const external=snapshot('external');external.workflow.agent_activity='conservative';external.saved.document.workflow.agent_activity='conservative';
+  conflict.latest=external;await conflict.fire('refresh');
+  assert.equal(conflict.control('agent-activity-value').textContent,'积极');
+  assert.equal(conflict.control('saved-state').textContent,'有冲突');
+  assert.equal(conflict.control('save').disabled,true);
+  await conflict.fire('restore');await conflict.fire('discard-confirm');
+  assert.equal(conflict.control('agent-activity-value').textContent,'保守');
+  assert.equal(conflict.control('save').disabled,true);
+  const local={...snapshot(),scope:'project',source:'project',global_revision:'g1'};
+  const reset=await harness(transport,local);
+  await reset.fire('agent-activity','input',2);
+  const inherited={...external,scope:'project',source:'global',global_revision:'g2',effective:copy(external.saved)};
+  inherited.saved={revision:'none',document:null,error:null};
+  reset.resetState=inherited;
+  await reset.fire('reset-inherit');await reset.fire('reset-confirm');
+  assert.equal(reset.control('agent-activity-value').textContent,'保守','reset uses inherited activity');
+  assert.equal(reset.control('save').disabled,true);
+  assert.equal(reset.calls.find(c=>c.path==='/api/reset').body.expected_global_revision,'g1');
+  for(const value of [null,false,0,'','Balanced','unknown']) {
+    const malformed=snapshot();malformed.workflow.agent_activity=value;malformed.saved.document.workflow.agent_activity=value;
+    const h=await harness(transport,malformed);
+    assert.equal(h.control('save').disabled,true,'invalid present activity cannot save');
+    assert.equal(h.control('agent-activity-value').textContent,'不可用');
+    await h.fire('save');assert.equal(h.calls.filter(c=>c.path==='/api/selection').length,0);
+  }
+  const invalidStop=await harness(transport);
+  await invalidStop.fire('agent-activity','input','1.5');
+  assert.equal(invalidStop.control('save').disabled,true);
+  await invalidStop.fire('agent-activity','input',2);
+  assert.equal(invalidStop.control('save').disabled,false);
+}
+console.log('Agent activity: legacy clean reads, all stops, global/project save/reload, isolated values, draft refresh, conflicts, discard, inheritance reset and invalid values passed.');

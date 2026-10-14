@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from test_native import mcp, catalog
+from test_native import mcp, catalog, DELEGATION_ASSESSMENT
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError
 from codex_duo_selection import saved_workflow
@@ -43,7 +43,8 @@ class WorkflowTests(unittest.TestCase):
                                   'expected_revision': revision})
 
     def begin(self, invocation='automatic'):
-        return self.service.begin({'project_root': str(self.root), 'task': self.task, 'invocation': invocation})
+        return self.service.begin({'project_root': str(self.root), 'task': self.task, 'invocation': invocation,
+                                   'assessment': DELEGATION_ASSESSMENT})
 
     def call(self, name, arguments):
         return self.server.dispatch({'jsonrpc':'2.0', 'id':1, 'method':'tools/call',
@@ -202,7 +203,8 @@ class WorkflowTests(unittest.TestCase):
             value = self.call('codex_duo_save', {'selection':self.selection,'workflow':workflow,
                                              'expected_revision':saved['revision']})
             self.assertTrue(value['isError'])
-        value = self.call('codex_duo_begin', {'project_root':str(self.root),'task':self.task,'invocation':'automatic'})
+        value = self.call('codex_duo_begin', {'project_root':str(self.root),'task':self.task,'invocation':'automatic',
+                                            'assessment': DELEGATION_ASSESSMENT})
         self.assertFalse(value['structuredContent']['execution_started'])
 
     def test_preparation_and_read_never_execute_task_commands(self):

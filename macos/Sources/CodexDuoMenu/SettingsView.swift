@@ -30,6 +30,7 @@ struct SettingsView: View {
                 d.workflow.activation != b.workflow.activation,
                 d.workflow.maxWorkerTurns != b.workflow.maxWorkerTurns,
                 d.workflow.maxParallelWorkers != b.workflow.maxParallelWorkers,
+                d.workflow.agentActivity != b.workflow.agentActivity,
                 d.workflow.coordinatorMode != b.workflow.coordinatorMode,
                 d.workflow.plannerMode != b.workflow.plannerMode,
                 d.workflow.plannerModel != b.workflow.plannerModel,
@@ -221,6 +222,9 @@ struct SettingsView: View {
                 Card {
                     ModelFields(choice: choice(coordinator: false), baseline: baseline?.selection.worker,
                                 catalog: store.catalog)
+                    CardDivider(inset: 0)
+                    AgentActivitySlider(selection: workflow(\.agentActivity, fallback: "balanced"),
+                                        changed: draft?.workflow.agentActivity != baseline?.workflow.agentActivity)
                 }
                 Text(store.workerDefaultSummary).font(.system(size: 11)).foregroundStyle(Theme.muted)
             }

@@ -30,3 +30,9 @@ bash macos/build.sh
 ### 0.9.9 Worker argv 指导与字节断言
 
 Worker 测试应将 JSON argv 单次解码后原样传给 `subprocess.run(argv, shell=False)`。新增只读字节断言脚本，避免嵌套 shell 与 Python 字符串转义。
+
+### 0.10.0 代理积极程度与派发前判断
+
+插件、MCP App 和菜单栏应用统一为 0.10.0，菜单栏 build 17。新增保守、均衡、积极三档，默认均衡；旧配置缺字段时保持文件不变并按均衡读取。自动派发先由当前聊天评估必要性，简单任务不创建交接或占用代理轮次。活动度只影响派发门槛，不修改模型、推理强度、并行数或总预算。
+
+使用上方官方 `codex plugin add` 更新插件缓存；菜单栏应用需要另行运行 `bash macos/build.sh`，备份旧应用后用生成的 `macos/dist/Codex Duo.app` 替换实际安装副本并重新打开。核对版本、签名、实际设置界面与均衡档位；保留项目和全局选择文件。

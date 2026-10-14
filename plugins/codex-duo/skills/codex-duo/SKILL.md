@@ -58,6 +58,21 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
 ## Prepare and dispatch automatically
 
 1. Inspect the actual files and relevant instructions; resolve the bounded work and checks.
+   **First decide whether delegation is worthwhile in this chat.** Read saved
+   `workflow.agent_activity` (`conservative`, `balanced`, `aggressive`; missing means
+   `balanced`). Simple work stays in this chat at every level. Assess complexity,
+   including total implementation/investigation/verification effort (time-consuming work
+   can be complex), whether work can be handed off independently, and expected benefit after context
+   handoff and verification costs. Do not use file count or line count alone.
+   Conservative delegates only complex independent work with clear benefit; balanced
+   requires clear benefit for moderate/complex independent work; aggressive also permits
+   possible benefit for such work. None delegates no-benefit or non-independent work.
+   Honor the user's explicit "自己做/不要派代理" by completing locally. An explicit request
+   to delegate overrides inclination, but never scope, model, effort or budget limits.
+   Do not launch a classifier or extra Planner for this decision. Briefly explain it.
+   If delegation is unnecessary, complete and verify the task in this chat: skip begin,
+   plan, reserve and spawn entirely. Do not create a placeholder Worker or spend a turn.
+   If worthwhile, continue below.
    Discover a native subagent tool supporting the selected worker model and reasoning
    effort. If unavailable or rejected, report the host limitation clearly. Do not start
    a separate CLI model process, silently substitute a model, or claim Codex Duo executed.
@@ -65,14 +80,21 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
 2. Build the task specification internally, using `../workflow/references/contract.md`: a unique task_id,
    goal, exact allowed_paths, acceptance criteria, and meaningful tests as argv arrays.
    Call `codex_duo_begin` with project_root, task, invocation (`automatic` or `explicit`),
-   and optional `worker_override` for an explicitly requested one-task Worker choice.
+   and `assessment={complexity:simple|moderate|complex,benefit:none|possible|clear,
+   independent:boolean,reason:string}`. Reason must concretely describe this task
+   (1..600 characters). New automatic tasks require assessment. `explicit` means the
+   human explicitly requested delegation, not just implementation; it may omit assessment.
+   Optional `worker_override` remains only for an explicitly requested one-task Worker choice.
+   The service applies activity to the assessment. On `state=current_thread`, finish
+   locally; there is no handoff or reserved budget and next_tool is null. Only continue
+   plan/reserve when the returned state is `ready_for_native_worker`.
    It atomically reads saved settings, prepares an internal snapshot, and returns the
    task_path, evidence_root, effective worker parameters, worker_summary and max_worker_turns. This is preparation,
    not an execution receipt. Never ask the user to edit/copy this snapshot.
 3. Read the actual native tool capacity (worker slots available to THIS parent task in total,
    including its reserved/running workers, excluding the coordinator and other tasks). Never
    change host configuration to increase it. If capacity is unknown, use 1 conservatively.
-   Plan one workstream for simple work. Split only clearly independent work: each workstream
+   Plan one workstream for bounded delegated work. Split only clearly independent work: each workstream
    has a unique id, complete task contract, exact disjoint allowed_paths, and depends_on IDs.
    Coordinate shared interfaces before dispatch; consolidate overlapping file edits into one
    owner. Reject circular dependencies or replan conflicts. Do not split merely to fill slots.
@@ -154,7 +176,7 @@ If newly installed MCP tools are not yet discovered, use the packaged local help
 an absolute project root (it performs no inference):
 
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py defaults --project-root <root>`
-- `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py begin --project-root <root> --task <internally-written-task.json> --invocation automatic`
+- `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py begin --project-root <root> --task <internally-written-task.json> --invocation automatic --assessment <internally-written-assessment.json>`
   Optional one-task flags: `--worker-model gpt-6-luna --worker-effort low` (either field may be omitted).
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py plan --project-root <root> --handoff-id <id> --host-capacity <total slots> [--workstreams <internal.json>]`
 - `python3 -B <skill-dir>/../workflow/scripts/codex_duo_workflow.py reserve --project-root <root> --handoff-id <id> --host-capacity <total slots> --workstream-id <id>`
@@ -168,7 +190,7 @@ executor and continue the permitted parts of the task without pretending delegat
 `codex_duo_prepare` is a legacy creation API. Its immutable handoff deliberately has no
 workflow and reports approval_required even if today's saved coordinator_mode is
 current_thread. Do not send that ID directly to plan/reserve. The normal Worker order is
-**defaults → begin → plan → reserve → native spawn → complete → verify**, with no prepare step.
+**defaults → current-chat necessity assessment → local completion OR begin → plan → reserve → native spawn → complete → verify**, with no prepare step.
 `codex_duo_execution_plan` only reads an existing snapshot's eligibility; `codex_duo_plan`
 persists workstreams/capacity for a ready_for_native_worker snapshot. Neither runs Planner
 inference. A selected_model snapshot remains blocked in the current-thread adapter and
@@ -176,7 +198,8 @@ must not be bypassed with request fields or by changing the immutable snapshot.
 
 When prepare was used accidentally and no reservation/dispatch exists for this task,
 preserve that old handoff, reuse its exact task (including task_id), and call begin with
-the actual project_root and invocation=explicit under the existing user authorization.
+the actual project_root and the invocation supported by the actual user authorization;
+automatic entry still requires assessment, and explicit entry requires an explicit delegation request.
 Adding the workflow to the new snapshot changes its content-derived handoff_id; this is
 not an in-place conversion. Check all matching task ledgers first. If any dispatch exists,
 keep its original ledger and consumed budget; do not create a new task ID to start over.
@@ -195,8 +218,9 @@ For “这次用 Luna low，完成后下次仍用默认”, call the actual begi
 `worker_override={"model":"gpt-6-luna","reasoning_effort":"low"}`. Do not call save/settings_update.
 Each field resolves: explicit task value > project preference > global default, then the
 final pair is validated. Omitted fields inherit, with no automatic effort adjustment or
-model upgrade/downgrade. A new task with no override uses saved defaults again. Do not
-classify task difficulty or launch an extra Planner; independent read-only planning still
+model upgrade/downgrade. A new task with no override uses saved defaults again. The activity
+assessment only decides whether to delegate; never change the model/effort based on it
+or launch an extra Planner. Independent read-only planning still
 requires its own explicit request. The settings “轻任务” preset fills only the Worker draft
 with Luna low; it changes persistent defaults only after an explicit Save.
 
@@ -211,7 +235,7 @@ Config, model catalogs, reservations, hashes and offline checks cannot confirm r
 Complete/verify return dispatch_summaries with these three evidence levels kept separate.
 
 After changing this feature, verify the current chat's begin schema exposes worker_override
-and complete exposes native_dispatch, and loaded code matches the implementation. If the chat
+and assessment, complete exposes native_dispatch, and loaded code matches the implementation. If the chat
 still has old schemas/code, stop real acceptance and explain update/reopen steps. Do not use a
 helper or old API to pretend the new normal tool entry was tested. A one-call authorization
 is a hard cap including uncertain dispatches: no retries or failed-record repair.
@@ -232,8 +256,12 @@ For user-requested implementation or bug fixes, load the `codex-duo` skill and r
 `codex_duo_defaults` with the actual current chat project cwd as explicit `project_root`.
 Use this root on every codex_duo_* call. Resolve project overrides before global defaults;
 manual mode or explicit no-model requests stop automatic dispatch. Only eligible development
-tasks use supported native workers under the saved model, effort, maximum parallel count
-and shared total turn limit, bounded by actual host capacity. Simple tasks use one worker.
+tasks first assess delegation necessity in this chat using agent_activity (default balanced).
+Simple tasks stay local. Consider independent scope, handoff costs and expected benefit;
+do not launch a classifier. Supply assessment to automatic begin and continue plan/reserve
+only for ready_for_native_worker. Honor explicit delegation/no-agent requests. Delegated
+work uses supported native workers under the saved model, effort, maximum parallel count
+and shared total turn limit, bounded by actual host capacity. Activity changes no budgets.
 Questions, read-only checks and configuration changes do not start workers. Workers must
 never recurse into this workflow. Do not create chats, commit, publish or change global
 configuration without a user request. Invalid saved settings fail closed.

@@ -106,7 +106,7 @@ class PackageCommandTests(unittest.TestCase):
             self.assertEqual(replies[2]['result']['resources'][0]['uri'], 'ui://codex-duo/model-desk-v4')
             self.assertFalse(replies[3]['result'].get('isError'), replies[3])
             self.assertEqual(set(replies[3]['result']['structuredContent']['values']), {
-                'coordinator', 'worker', 'activation', 'coordinator_mode',
+                'coordinator', 'worker', 'activation', 'agent_activity', 'coordinator_mode',
                 'max_worker_turns', 'max_parallel_workers', 'planner_mode',
                 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'})
             self.assertFalse((Path(tmp) / 'project' / '.codex-duo').exists())

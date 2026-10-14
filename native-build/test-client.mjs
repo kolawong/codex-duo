@@ -38,7 +38,13 @@ try {
  assert.equal(configured.isError,undefined);
  const defaults=(await client.callTool({name:'codex_duo_defaults',arguments:{project_root:temp}})).structuredContent;
  assert.equal(defaults.workflow.activation,'automatic_project');
- const begun=(await client.callTool({name:'codex_duo_begin',arguments:{project_root:temp,task:state.task_template,invocation:'automatic'}})).structuredContent;
+ assert.equal(defaults.workflow.agent_activity,'balanced');
+ const assessment={complexity:'complex',benefit:'clear',independent:true,reason:'Offline fixture: bounded independent implementation with integration checks.'};
+ const missingAssessment=await client.callTool({name:'codex_duo_begin',arguments:{project_root:temp,task:state.task_template,invocation:'automatic'}});
+ assert.equal(missingAssessment.structuredContent.error.code,'assessment_required');
+ const local=(await client.callTool({name:'codex_duo_begin',arguments:{project_root:temp,task:state.task_template,invocation:'automatic',assessment:{...assessment,complexity:'simple'}}})).structuredContent;
+ assert.equal(local.state,'current_thread');assert.equal(local.handoff_id,undefined);assert.equal(local.next_tool,null);
+ const begun=(await client.callTool({name:'codex_duo_begin',arguments:{project_root:temp,task:state.task_template,invocation:'automatic',assessment}})).structuredContent;
  assert.equal(begun.state,'ready_for_native_worker');
  assert.equal(begun.coordinator.requires_new_task,false);
  assert.equal(begun.execution_started,false);

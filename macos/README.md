@@ -45,3 +45,5 @@ bash macos/build.sh
 0.9.6 / build 15 移除完成模式选择、完成列表及剪贴板提示。原聊天等待结果并验收。保留 Planner 设置与头部布局修复；不自动打开菜单应用。
 
 0.9.7 / build 16：`generate-icons.py` 在打包前从标题栏使用的 `Resources/Brand/AppIcon.svg` 生成 16–1024 px 的完整 iconset、AppIcon.icns 和插件 PNG。需要 rsvg-convert 与 macOS iconutil；不另绘一套图标。
+
+0.10.0 / build 17：新增「代理积极程度」三档滑杆（保守、均衡、积极），默认均衡。旧配置缺少此字段时按均衡读取，不自动改写设置。简单任务由当前聊天完成，适合独立交接的任务按档位门槛派发；模型、推理强度和预算保持原设置。

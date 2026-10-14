@@ -13,8 +13,13 @@ For user-requested implementation or bug fixes, load the `codex-duo` skill and r
 `codex_duo_defaults` with the actual current chat project directory as `project_root`.
 Pass this same explicit root to every codex_duo_* call; menu selection never routes chats.
 Resolve project overrides before global defaults. Follow saved activation:
-automatic_project uses this chat and supported native workers, bounded by the saved
-maximum parallel count, actual host capacity and shared total turn limit; simple tasks use one;
+automatic_project first assesses delegation necessity in this chat using agent_activity
+(conservative/balanced/aggressive, default balanced). Simple tasks stay in this chat.
+Consider independent scope, handoff cost and expected benefit; do not launch a classifier.
+Supply assessment to automatic codex_duo_begin; only ready_for_native_worker proceeds
+to plan/reserve. Explicit user delegation takes precedence; explicit no-agent requests stop it.
+Supported native workers remain bounded by the saved maximum parallel count, actual
+host capacity and shared total turn limit; activity never changes models or budgets;
 manual requires the user to request Codex Duo. Ordinary questions, read-only checks,
 configuration changes and explicit no-model requests do not start workers.
 Workers must not recursively invoke Codex Duo. Preserve task scope and existing authorization;

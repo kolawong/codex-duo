@@ -19,6 +19,7 @@ def main():
             sub.add_argument('--invocation', choices=['automatic', 'explicit'], required=True)
             sub.add_argument('--worker-model')
             sub.add_argument('--worker-effort')
+            sub.add_argument('--assessment', type=Path, help='Current-chat delegation assessment JSON; required for new automatic tasks')
     sub = commands.add_parser('migrate_completion', help='Explicit saved-settings migration to return; never edits tasks')
     sub.add_argument('--project-root', type=Path, required=True)
     sub.add_argument('--scope', choices=['project', 'global'], required=True)
@@ -68,6 +69,7 @@ def main():
                         'reasoning_effort': args.worker_effort}.items() if v is not None}
             result = service.begin({'project_root': str(args.project_root),
                 'task': json.loads(args.task.read_text()), 'invocation': args.invocation,
+                **({'assessment': json.loads(args.assessment.read_text())} if args.assessment else {}),
                 **({'worker_override': override} if override else {})})
         else:
             body = {key: value for key, value in vars(args).items() if key != 'command' and value is not None}

@@ -4,6 +4,26 @@ Task JSON contains schema_version=1, task_id, goal, allowed_paths, acceptance,
 and tests (an array of argv arrays). Tests must be selected by the coordinator;
 never execute arbitrary task argv without reviewing scope and approval.
 
+Before a NEW automatic begin, the current chat assesses the work itself. Pass
+`assessment={complexity:simple|moderate|complex, benefit:none|possible|clear,
+independent:boolean, reason:string}` with a concrete reason (1..600 characters).
+Missing/invalid assessment cannot prepare a new automatic handoff. Simple work,
+non-independent work or no-benefit handoffs return `state=current_thread`, no
+handoff_id, next_tool=null and no dispatch budget. Finish locally and verify normally.
+Conservative requires complex work and clear benefit; balanced requires clear benefit;
+aggressive also permits possible benefit. File/line count alone is not an assessment.
+No classifier or extra Planner is launched. `invocation=explicit` means the human
+explicitly requested delegation for this task (not just implementation); it takes
+precedence over activity and may omit assessment. Explicit no-agent requests stay local.
+Activity never changes the selected model, effort, parallel or total turn limits.
+
+New delegated snapshots bind `delegation` (activity, invocation, assessment, decision,
+reason) into the immutable hash. Repeated task IDs reuse their original decision and
+budget even after settings changes; conflicting invocation/assessment is rejected.
+An omitted repeat assessment reuses the original. Legacy immutable handoffs without
+delegation or agent_activity retain their exact serialization and remain verifiable.
+Saved settings missing agent_activity resolve to balanced without rewriting files.
+
 begin accepts a separate optional `worker_override` object with model and/or reasoning_effort.
 It is not part of task JSON and cannot change the coordinator, Planner, scope or budget.
 Each field merges over project then global defaults before the resulting pair is validated.

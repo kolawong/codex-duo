@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from test_native import catalog, mcp
+from test_native import catalog, mcp, DELEGATION_ASSESSMENT
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError
 from codex_duo_selection import saved_workflow
@@ -64,7 +64,8 @@ class GlobalDefaultsTests(unittest.TestCase):
             self.two.begin({'project_root':str(self.b),'task':self.two.template,'invocation':'automatic'})
         self.assertEqual(error.exception.code,'manual_mode')
         self.save(service=self.two,scope='project')
-        plan=self.two.begin({'project_root':str(self.b),'task':self.two.template,'invocation':'automatic'})
+        plan=self.two.begin({'project_root':str(self.b),'task':self.two.template,'invocation':'automatic',
+                             'assessment': DELEGATION_ASSESSMENT})
         self.assertEqual(plan['project_root'],str(self.b))
         self.assertTrue(plan['handoff_path'].startswith(str(self.b/'.codex-duo/handoffs')))
         self.assertFalse((self.home/'codex-duo/handoffs').exists())
@@ -109,7 +110,8 @@ class GlobalDefaultsTests(unittest.TestCase):
         server=mcp.MCPServer(self.one)
         opened=server.call('codex_duo_open',{'project_root':str(self.b)})['_meta']['codex-duo/state']
         self.assertEqual(opened['scope'],'global');self.assertEqual(opened['project_root'],str(self.b))
-        begun=server.call('codex_duo_begin',{'project_root':str(self.b),'task':self.one.template,'invocation':'automatic'})['structuredContent']
+        begun=server.call('codex_duo_begin',{'project_root':str(self.b),'task':self.one.template,'invocation':'automatic',
+                                          'assessment': DELEGATION_ASSESSMENT})['structuredContent']
         self.assertEqual(begun['project_root'],str(self.b))
         self.assertTrue(begun['task_path'].startswith(str(self.b)))
         self.assertFalse((self.a/'.codex-duo').exists())

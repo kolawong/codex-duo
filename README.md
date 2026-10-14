@@ -3,7 +3,7 @@
 > **一个规划，一个执行** —— 面向 OpenAI Codex 的原生双代理协同开发系统。  
 > 主控会话负责任务拆解与代码验收，原生子代理在受控边界与预算内高效交付代码。
 
-[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-brightgreen.svg)]()
 [![Swift](https://img.shields.io/badge/swift-6.0%2B-orange.svg)]()
@@ -182,6 +182,29 @@ For user-requested implementation or bug fixes, load the `codex-duo` skill and r
 
 ## 日常使用指南
 
+### 代理积极程度
+
+设置面板提供「保守 / 均衡 / 积极」三档滑块，默认**均衡**，支持全局默认和项目覆盖。
+旧设置缺少该字段时按均衡读取，不自动改写文件。
+
+| 档位 | 自动派发行为 |
+| :--- | :--- |
+| 保守 | 只委派复杂、可独立执行且交接收益明确的工作 |
+| 均衡 | 中等或复杂任务可独立执行、且交接收益明确时委派 |
+| 积极 | 更主动委派中等或复杂的独立工作，允许尝试有潜在收益的交接 |
+
+三档都会将简单任务留在当前聊天；无法独立交接或没有收益的任务也由当前聊天继续。
+判断由当前聊天结合实际文件、上下文交接和验证成本完成，不按文件数/改动行数机械决定，
+也不额外启动分类代理或 Planner。每次简短说明决定及原因。用户当次明确要求派代理或自己做时优先遵从。
+积极程度只控制是否值得派发；不会改变模型、思考强度、并行数量、执行次数上限或验收要求。
+
+自动入口 `codex_duo_begin` 要求当前聊天提供 `assessment`：
+`{complexity: "simple|moderate|complex", benefit: "none|possible|clear", independent: true/false, reason: "具体原因"}`。
+不需要代理时返回 `current_thread`，不创建交接或占用派发预算；仅 `ready_for_native_worker` 进入 plan/reserve。
+必要性判断随新任务快照固定，后续修改设置不改变已有任务或重置预算。
+`invocation=explicit` 只代表用户明确要求委派，不能把普通开发请求标成 explicit 来绕过判断。
+服务验证的是当前聊天提供的判断及规则，不会自行理解用户请求，也不能拦截绕过插件直接调用的宿主代理工具。
+
 ### 轻任务与本次 Worker 覆盖
 
 现有设置界面新增“轻任务”预设：Worker 为 `gpt-6-luna / low`，当前聊天规划验收，
@@ -261,6 +284,7 @@ Codex Duo 采用分层继承机制，确保灵活性与整洁度：
 {
   "workflow": {
     "activation": "automatic_project",
+    "agent_activity": "balanced",
     "coordinator_mode": "current_thread",
     "max_worker_turns": 10,
     "max_parallel_workers": 1,
@@ -283,6 +307,7 @@ Codex Duo 采用分层继承机制，确保灵活性与整洁度：
 | 字段 | 类型 | 可选值 / 说明 |
 | :--- | :--- | :--- |
 | `workflow.activation` | `string` | `automatic_project`（满足条件自动启用，推荐） \| `manual`（需显式呼叫） |
+| `workflow.agent_activity` | `string` | `conservative`（保守） / `balanced`（均衡，默认） / `aggressive`（积极）；仅影响派发倾向 |
 | `workflow.coordinator_mode` | `string` | `current_thread`（当前会话担任主控协调者） |
 | `workflow.max_worker_turns` | `integer` | Worker 执行总轮数上限（默认 `10`，首次派发与后续纠错共享该预算） |
 | `workflow.max_parallel_workers` | `integer` | 最大并发 Worker 数量（可选 `1` / `2` / `3`，默认 `1`） |

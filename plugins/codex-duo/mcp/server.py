@@ -12,8 +12,9 @@ sys.path.insert(0, str(PLUGIN / 'skills/workflow/scripts'))
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError
 from codex_duo_projects import project_path
+from codex_duo_selection import ASSESSMENT_SCHEMA
 
-VERSION = '0.9.9'
+VERSION = '0.10.0'
 RESOURCE = 'ui://codex-duo/model-desk-v4'
 MIME = 'text/html;profile=mcp-app'
 EMPTY = {'type': 'object', 'properties': {}, 'additionalProperties': False}
@@ -32,6 +33,7 @@ SELECTION = {'type': 'object', 'properties': {r: PAIR for r in ('coordinator', '
              'required': ['coordinator', 'worker'], 'additionalProperties': False}
 WORKFLOW = {'type': 'object', 'properties': {
     'activation': {'type': 'string', 'enum': ['automatic_project', 'manual']},
+    'agent_activity': {'type': 'string', 'enum': ['conservative', 'balanced', 'aggressive']},
     'coordinator_mode': {'type': 'string', 'enum': ['current_thread', 'selected_model']},
     'max_worker_turns': {'type': 'integer', 'minimum': 1, 'maximum': 10},
     'max_parallel_workers': {'type': 'integer', 'minimum': 1, 'maximum': 3},
@@ -68,6 +70,7 @@ def tool_definitions():
         tool('codex_duo_begin', '按已保存配置准备当前任务，由当前聊天调度原生执行代理',
              object_schema({'project_root': {'type': 'string'}, 'task': {'type': 'object'},
                  'invocation': {'type': 'string', 'enum': ['automatic', 'explicit']},
+                 'assessment': ASSESSMENT_SCHEMA,
                  'worker_override': WORKER_OVERRIDE}, ['project_root', 'task', 'invocation']), readonly=False, model=True),
         tool('codex_duo_prepare', '兼容旧式声明交接；当前聊天执行请用 codex_duo_begin', object_schema({'task': {'type': 'object'},
              'expected_revision': {'type': 'string'}}), readonly=False, model=True),
@@ -79,7 +82,7 @@ def tool_definitions():
                  'required': ['schema', 'values']}),
         tool('codex_duo_settings_update', '更新 Codex Duo 原生设置', object_schema({'set': {
              'type': 'object', 'properties': {key: {'type': 'string'} for key in
-                 ('coordinator', 'worker', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns')},
+                 ('coordinator', 'worker', 'activation', 'agent_activity', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns')},
              'minProperties': 1, 'additionalProperties': False}}), readonly=False,
              outputSchema={'type': 'object', 'properties': {'values': {'type': 'object'}}, 'required': ['values']})]
     for operation, properties, required in [
@@ -114,7 +117,7 @@ def tool_definitions():
             definitions[-1]['annotations']['openWorldHint'] = True
     for definition in definitions:
         if definition['name'] == 'codex_duo_begin':
-            definition['description'] = '当前聊天执行入口：可选 worker_override={model?,reasoning_effort?} 仅覆盖新任务，按字段优先于项目/全局默认，合并后校验。保存不可变快照与来源，重复 task_id 冲突拒绝；不改偏好、不启动 Planner/Worker。之后 plan → reserve → 原生派发 → complete → verify。'
+            definition['description'] = '当前聊天执行入口：自动派发须先由当前聊天判断必要性并提供 assessment（complexity/benefit/independent/reason），按已保存的代理积极程度决定是否委派。简单或不值得交接的任务返回 current_thread，无交接和派发预算；仅 ready_for_native_worker 继续 plan → reserve → 原生派发 → complete → verify。invocation=explicit 仅用于用户本次明确要求派代理，优先于积极程度。可选 worker_override={model?,reasoning_effort?} 仅覆盖本任务；保存不可变判断与模型来源，重复 task_id 冲突拒绝。不改偏好、不启动分类器/Planner/Worker。'
         elif definition['name'] == 'codex_duo_prepare':
             definition['description'] = '旧式兼容入口：生成不含 workflow 的声明交接，状态 approval_required，不能直接用于 codex_duo_plan/reserve。当前聊天任务应调用 codex_duo_begin；不得通过替换旧交接或 task_id 重置已有预算。此工具不调用模型。'
         elif definition['name'] == 'codex_duo_execution_plan':

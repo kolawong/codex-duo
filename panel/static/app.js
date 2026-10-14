@@ -1,12 +1,17 @@
 const $ = id => document.getElementById(id);
 const roles = ['coordinator', 'worker'];
 const efforts = {none:'无', minimal:'最低', low:'低', medium:'中', high:'高', xhigh:'很高', max:'最高', ultra:'超高'};
+const agentActivities = [
+  {id:'conservative',title:'保守',description:'优先自己完成；任务复杂或耗时且适合交接时派代理。'},
+  {id:'balanced',title:'均衡',description:'简单任务自己完成；有明确收益时派代理。'},
+  {id:'aggressive',title:'积极',description:'更主动委派可独立执行的工作；琐碎任务仍自己完成。'}
+];
 let state = null, draft = null, workflow = null, baseline = null, busy = false, connected = false, conflict = false, enableRequested = false, pendingScope = null;
 const clone = value => JSON.parse(JSON.stringify(value));
 const model = id => state?.catalog?.models.find(m => m.id === id);
-const changes = () => !baseline || !draft ? 0 : roles.reduce((count, role) => count + Number(draft[role].model !== baseline.selection[role].model) + Number(draft[role].reasoning_effort !== baseline.selection[role].reasoning_effort), 0) + ['activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'].reduce((count, key) => count + Number(workflow[key] !== baseline.workflow[key]), 0);
+const changes = () => !baseline || !draft ? 0 : roles.reduce((count, role) => count + Number(draft[role].model !== baseline.selection[role].model) + Number(draft[role].reasoning_effort !== baseline.selection[role].reasoning_effort), 0) + ['agent_activity', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'].reduce((count, key) => count + Number(workflow[key] !== baseline.workflow[key]), 0);
 const dirty = () => changes() > 0;
-const valid = () => Boolean(draft && workflow && roles.every(role => model(draft[role].model)?.efforts.includes(draft[role].reasoning_effort)) && ['automatic_project','manual'].includes(workflow.activation) && ['current_thread','selected_model'].includes(workflow.coordinator_mode) && Number.isInteger(workflow.max_worker_turns) && workflow.max_worker_turns >= 1 && workflow.max_worker_turns <= 10 && Number.isInteger(workflow.max_parallel_workers) && workflow.max_parallel_workers >= 1 && workflow.max_parallel_workers <= 3 && ['disabled','plan_only'].includes(workflow.planner_mode) && Number.isInteger(workflow.max_planner_turns) && workflow.max_planner_turns >= 1 && workflow.max_planner_turns <= 3 && (workflow.planner_mode === 'disabled' || model(workflow.planner_model)?.efforts.includes(workflow.planner_reasoning_effort)));
+const valid = () => Boolean(draft && workflow && agentActivities.some(item => item.id === workflow.agent_activity) && roles.every(role => model(draft[role].model)?.efforts.includes(draft[role].reasoning_effort)) && ['automatic_project','manual'].includes(workflow.activation) && ['current_thread','selected_model'].includes(workflow.coordinator_mode) && Number.isInteger(workflow.max_worker_turns) && workflow.max_worker_turns >= 1 && workflow.max_worker_turns <= 10 && Number.isInteger(workflow.max_parallel_workers) && workflow.max_parallel_workers >= 1 && workflow.max_parallel_workers <= 3 && ['disabled','plan_only'].includes(workflow.planner_mode) && Number.isInteger(workflow.max_planner_turns) && workflow.max_planner_turns >= 1 && workflow.max_planner_turns <= 3 && (workflow.planner_mode === 'disabled' || model(workflow.planner_model)?.efforts.includes(workflow.planner_reasoning_effort)));
 const canSave = () => !busy && connected && !conflict && valid() && (dirty() || Boolean(state.saved.error) || (!state.saved.document && (state.scope === 'global' || !state.effective?.document)) || enableRequested);
 const conflictMessage = '配置已在别处更新。已保留你的修改；请放弃修改并重新载入最新配置。';
 
@@ -27,7 +32,7 @@ async function request(path, body) {
 function restoreDraft() {
   draft = clone(state.saved.document?.selection || state.default);
   const {completion_mode, ...currentWorkflow} = clone(state.workflow);
-  workflow = { max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...currentWorkflow};
+  workflow = { agent_activity:'balanced', max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...currentWorkflow};
   if (!state.saved.document && !state.effective?.document && !state.saved.error) workflow.activation = 'manual';
   enableRequested = false;
   baseline = {selection:clone(draft), workflow:clone(workflow), revision:state.saved.revision, globalRevision:state.global_revision};
@@ -68,6 +73,13 @@ function render() {
     }
   }
   if (workflow) {
+    const activityIndex = agentActivities.findIndex(item => item.id === workflow.agent_activity);
+    const activity = agentActivities[activityIndex];
+    $('agent-activity').value = String(activityIndex < 0 ? 1 : activityIndex);
+    $('agent-activity').setAttribute('aria-valuetext', activity?.title || '不可用');
+    $('agent-activity').style.backgroundImage = `linear-gradient(to right, #9cc7fc 0%, #9cc7fc ${Math.max(0, activityIndex) * 50}%, var(--track) ${Math.max(0, activityIndex) * 50}%, var(--track) 100%)`;
+    $('agent-activity-value').textContent = activity?.title || '不可用';
+    $('agent-activity-description').textContent = activity?.description || '请选择保守、均衡或积极。';
     const automatic = workflow.activation === 'automatic_project', selected = workflow.coordinator_mode === 'selected_model';
     $('activation-automatic').setAttribute('aria-pressed', String(automatic));
     $('activation-manual').setAttribute('aria-pressed', String(!automatic));
@@ -147,6 +159,12 @@ for (const role of roles) {
   $(`${role}-effort`).addEventListener('change', event => {draft[role].reasoning_effort=event.target.value; edited();});
 }
 for (const [id,value] of [['activation-automatic','automatic_project'],['activation-manual','manual']]) $(id).addEventListener('click', () => {workflow.activation=value; enableRequested=(state.scope || 'project')==='project' && value==='automatic_project' && state.source!=='global' && !state.project_opt_in?.enabled; edited();});
+$('agent-activity').addEventListener('input', event => {
+  if (busy || !connected) return;
+  const index = Number(event.target.value);
+  workflow.agent_activity = Number.isInteger(index) ? agentActivities[index]?.id || '' : '';
+  edited();
+});
 $('planner-mode').addEventListener('change', event => {workflow.planner_mode=event.target.value; edited();});
 $('planner-model').addEventListener('change', event => {
   workflow.planner_model=event.target.value;

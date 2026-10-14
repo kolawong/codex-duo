@@ -33,6 +33,97 @@ final class StubService: CodexDuoServing {
 }
 
 final class CodexDuoMenuTests: XCTestCase {
+    func testAgentActivityLegacyCodableRoundTripAndInvalidPresentValues() throws {
+        let prefix = #"{"activation":"manual","coordinator_mode":"current_thread","max_worker_turns":3"#
+        let legacy = try JSONDecoder().decode(Workflow.self, from: Data((prefix + "}").utf8))
+        XCTAssertEqual(legacy.agentActivity, "balanced")
+        XCTAssertTrue(legacy.isValid)
+        for activity in AgentActivity.allCases {
+            var value = legacy
+            value.agentActivity = activity.rawValue
+            XCTAssertTrue(value.isValid)
+            let encoded = try JSONEncoder().encode(value)
+            XCTAssertEqual(try JSONDecoder().decode(Workflow.self, from: encoded), value)
+            let object = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+            XCTAssertEqual(object["agent_activity"] as? String, activity.rawValue)
+            XCTAssertEqual(AgentActivity.at(activity.sliderValue), activity)
+        }
+        for raw in ["null", "true", "0", "\"\"", "\"Balanced\"", "\"unknown\""] {
+            let json = prefix + ",\"agent_activity\":" + raw + "}"
+            XCTAssertThrowsError(try JSONDecoder().decode(Workflow.self, from: Data(json.utf8)))
+        }
+        var invalid = legacy; invalid.agentActivity = "unknown"
+        XCTAssertFalse(invalid.isValid)
+        for value in [-1.0, 0.5, 3.0, Double.infinity, Double.nan] {
+            XCTAssertNil(AgentActivity.at(value))
+        }
+    }
+
+    @MainActor func testAgentActivityDraftAndSaveForAllStopsAndScopesPreservesOtherSettings() async throws {
+        for scope in ["global", "project"] {
+            for activity in AgentActivity.allCases {
+                var response = try state()
+                response.scope = scope; response.source = scope; response.globalRevision = "g1"
+                response.workflow?.agentActivity = activity == .balanced ? "conservative" : "balanced"
+                response.saved?.document?.workflow = response.workflow
+                let service = StubService(response)
+                let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+                await store.refresh()
+                let before = store.draft!
+                store.draft?.workflow.agentActivity = activity.rawValue
+                XCTAssertTrue(store.isDirty); XCTAssertTrue(store.canSave)
+                await store.refresh()
+                XCTAssertEqual(store.draft?.workflow.agentActivity, activity.rawValue)
+                let sent = store.draft!
+                service.saved = SavedState(document: SavedDocument(selection: sent.selection, workflow: sent.workflow,
+                    savedAt: "now"), revision: "saved", error: nil)
+                await store.save()
+                XCTAssertEqual(service.sent?.scope, scope)
+                XCTAssertEqual(service.sent?.workflow.agentActivity, activity.rawValue)
+                XCTAssertEqual(service.sent?.selection, before.selection)
+                var unchanged = service.sent!.workflow; unchanged.agentActivity = before.workflow.agentActivity
+                XCTAssertEqual(unchanged, before.workflow)
+                XCTAssertFalse(store.isDirty); XCTAssertFalse(store.canSave)
+                response.saved = service.saved; response.workflow = sent.workflow; service.response = response
+                await store.refresh()
+                XCTAssertEqual(store.draft?.workflow.agentActivity, activity.rawValue)
+            }
+        }
+    }
+
+    @MainActor func testAgentActivityLegacyReadConflictDiscardAndInheritedReset() async throws {
+        var local = try state()
+        local.scope = "project"; local.source = "project"; local.globalRevision = "g1"
+        let service = StubService(local)
+        let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+        await store.refresh()
+        XCTAssertEqual(store.draft?.workflow.agentActivity, "balanced")
+        XCTAssertFalse(store.isDirty); XCTAssertFalse(store.canSave)
+        await store.save(); XCTAssertNil(service.sent)
+        store.draft?.workflow.agentActivity = "unknown"
+        XCTAssertFalse(store.canSave)
+        store.draft?.workflow.agentActivity = "aggressive"
+        var external = try state(revision: "external")
+        external.workflow?.agentActivity = "conservative"
+        external.saved?.document?.workflow = external.workflow
+        service.response = external
+        await store.refresh()
+        XCTAssertEqual(store.draft?.workflow.agentActivity, "aggressive")
+        XCTAssertTrue(store.hasExternalChange); XCTAssertFalse(store.canSave)
+        await store.refresh(discardDraft: true)
+        XCTAssertEqual(store.draft?.workflow.agentActivity, "conservative")
+        XCTAssertFalse(store.isDirty)
+        store.draft?.workflow.agentActivity = "aggressive"
+        var global = try inherited()
+        global.workflow?.agentActivity = "conservative"
+        global.effective?.document?.workflow = global.workflow
+        service.resetResponse = global
+        await store.resetToInherit()
+        XCTAssertEqual(store.source, "global")
+        XCTAssertEqual(store.draft?.workflow.agentActivity, "conservative")
+        XCTAssertFalse(store.isDirty); XCTAssertFalse(store.canSave)
+    }
+
     @MainActor func testLightPresetIsDraftOnlyAndPreservesPlannerCoordinatorAndBudget() async throws {
         var response = try state()
         response.catalog?.models.append(ModelOption(id: "gpt-6-luna", name: "Luna", description: "", efforts: ["low"], defaultEffort: "low"))
