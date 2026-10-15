@@ -210,6 +210,24 @@ class AdaptiveTests(unittest.TestCase):
             self.assertIsNone(self.service.state()['execution_status'])
             path.write_bytes(original)
 
+    def test_mcp_panel_save_accepts_profiles_in_both_scopes_and_rejects_unknown_tiers(self):
+        server = mcp.MCPServer(self.service)
+        for scope in ('global', 'project'):
+            revision = self.service.defaults_store.store(scope).read(catalog())['revision']
+            args = {'project_root': str(self.root), 'scope': scope, 'selection': self.selection,
+                    'workflow': self.workflow, 'expected_revision': revision}
+            saved = server.call('codex_duo_save', args)['structuredContent']
+            self.assertEqual(self.profiles, saved['document']['workflow']['worker_profiles'])
+            self.assertEqual('adaptive', saved['document']['workflow']['worker_strategy'])
+            args['expected_revision'] = saved['revision']
+            args['workflow'] = dict(self.workflow, worker_strategy='fixed', worker_profiles={})
+            fixed = server.call('codex_duo_save', args)['structuredContent']
+            self.assertEqual({}, fixed['document']['workflow']['worker_profiles'])
+            args['expected_revision'] = fixed['revision']
+            args['workflow'] = dict(self.workflow, worker_profiles={**self.profiles, 'unknown': self.profiles['light']})
+            with self.assertRaises(SelectionError): server.call('codex_duo_save', args)
+            self.assertEqual(fixed['revision'], self.service.defaults_store.store(scope).read(catalog())['revision'])
+
     def test_mcp_settings_tier_controls_and_project_precedence(self):
         self.save(dict(self.workflow, worker_strategy='fixed', worker_profiles={}), 'global')
         server = mcp.MCPServer(self.service)

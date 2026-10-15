@@ -98,7 +98,21 @@ try {
  assert.equal(cross.isError,true,'handoff lookup cannot cross project roots');
  const stored=JSON.parse(await readFile(path.join(temp,'codex-home/codex-duo/selection.json'),'utf8'));
  assert.equal(stored.selection.worker.reasoning_effort,'high');
+ // Exercise the actual MCP save schema used by the embedded panel, not a mock transport.
+ const saveWorkflowSchema=tools.tools.find(tool=>tool.name==='codex_duo_save').inputSchema.properties.workflow.properties;
+ assert.deepEqual(saveWorkflowSchema.worker_strategy.enum,['fixed','adaptive']);
+ assert.deepEqual(Object.keys(saveWorkflowSchema.worker_profiles.properties),['light','standard','complex']);
+ for (const scope of ['global','project']) {
+  const tierState=(await client.callTool({name:'codex_duo_state',arguments:{project_root:other,scope}})).structuredContent;
+  const {completion_mode,...tierWorkflow}=tierState.workflow;
+  const adaptiveSaved=await client.callTool({name:'codex_duo_save',arguments:{project_root:other,scope,
+   selection:tierState.default,workflow:{...tierWorkflow,worker_strategy:'adaptive',worker_profiles:tierState.suggested_worker_profiles},
+   expected_revision:tierState.saved.revision,expected_global_revision:tierState.global_revision}});
+  assert.equal(adaptiveSaved.isError,undefined,JSON.stringify(adaptiveSaved));
+  assert.equal(adaptiveSaved.structuredContent.document.workflow.worker_strategy,'adaptive');
+  assert.deepEqual(adaptiveSaved.structuredContent.document.workflow.worker_profiles,tierState.suggested_worker_profiles);
+ }
  console.log(JSON.stringify({status:'passed',sdk:'@modelcontextprotocol/client 2.3.1',
   checks:['stdio handshake','tool schema discovery','resource read','structured settings read/update',
-   'shared saved state','persistent workflow defaults','automatic task adapter','handoff snapshot','execution adapter without execution','invalid effort error','stateless multi-project reads/saves','explicit AGENTS opt-in','cross-project handoff isolation','parallel cap and durable reservation accounting','missing integrated evidence rejection'],model_calls:0}));
+   'shared saved state','persistent workflow defaults','automatic task adapter','handoff snapshot','execution adapter without execution','invalid effort error','stateless multi-project reads/saves','explicit AGENTS opt-in','cross-project handoff isolation','parallel cap and durable reservation accounting','missing integrated evidence rejection','adaptive profiles through actual global/project save schema'],model_calls:0}));
 } finally {await client.close();await rm(temp,{recursive:true,force:true});}

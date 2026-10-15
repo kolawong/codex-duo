@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 
-const app = new App({name: 'Codex Duo settings', version: '0.11.0'},
+const app = new App({name: 'Codex Duo settings', version: '0.11.1'},
   {availableDisplayModes: ['fullscreen']}, {autoResize: true});
 let receiveInitial;
 const initial = new Promise(resolve => { receiveInitial = resolve; });

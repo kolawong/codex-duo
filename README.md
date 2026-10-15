@@ -3,7 +3,7 @@
 > **一个规划，一个执行** —— 面向 OpenAI Codex 的原生双代理协同开发系统。  
 > 主控会话负责任务拆解与代码验收，原生子代理在受控边界与预算内高效交付代码。
 
-[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.11.1-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-brightgreen.svg)]()
 [![Swift](https://img.shields.io/badge/swift-6.0%2B-orange.svg)]()

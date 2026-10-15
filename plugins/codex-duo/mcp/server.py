@@ -14,7 +14,7 @@ from codex_duo_selection import SelectionError
 from codex_duo_projects import project_path
 from codex_duo_selection import ASSESSMENT_SCHEMA
 
-VERSION = '0.11.0'
+VERSION = '0.11.1'
 RESOURCE = 'ui://codex-duo/model-desk-v4'
 MIME = 'text/html;profile=mcp-app'
 EMPTY = {'type': 'object', 'properties': {}, 'additionalProperties': False}
@@ -34,6 +34,9 @@ SELECTION = {'type': 'object', 'properties': {r: PAIR for r in ('coordinator', '
 WORKFLOW = {'type': 'object', 'properties': {
     'activation': {'type': 'string', 'enum': ['automatic_project', 'manual']},
     'agent_activity': {'type': 'string', 'enum': ['conservative', 'balanced', 'aggressive']},
+    'worker_strategy': {'type': 'string', 'enum': ['fixed', 'adaptive']},
+    'worker_profiles': {'type': 'object', 'properties': {tier: PAIR for tier in ('light', 'standard', 'complex')},
+                        'additionalProperties': False},
     'coordinator_mode': {'type': 'string', 'enum': ['current_thread', 'selected_model']},
     'max_worker_turns': {'type': 'integer', 'minimum': 1, 'maximum': 10},
     'max_parallel_workers': {'type': 'integer', 'minimum': 1, 'maximum': 3},
