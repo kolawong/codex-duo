@@ -1,5 +1,9 @@
 const $ = id => document.getElementById(id);
 const roles = ['coordinator', 'worker'];
+const workerTiers = [{id:'light',title:'轻量'},{id:'standard',title:'标准'},{id:'complex',title:'复杂'}];
+const completeProfiles = profiles => Boolean(profiles && !Array.isArray(profiles) && typeof profiles === 'object' && Object.keys(profiles).sort().join(',') === 'complex,light,standard');
+const validChoice = choice => Boolean(choice && Object.keys(choice).sort().join(',') === 'model,reasoning_effort' && model(choice.model)?.efforts.includes(choice.reasoning_effort));
+const validProfiles = () => Boolean(workflow && ((workflow.worker_strategy === 'fixed' && workflow.worker_profiles && !Array.isArray(workflow.worker_profiles) && typeof workflow.worker_profiles === 'object' && Object.keys(workflow.worker_profiles).length === 0) || (completeProfiles(workflow.worker_profiles) && workerTiers.every(tier => validChoice(workflow.worker_profiles[tier.id])))));
 const efforts = {none:'无', minimal:'最低', low:'低', medium:'中', high:'高', xhigh:'很高', max:'最高', ultra:'超高'};
 const agentActivities = [
   {id:'conservative',title:'保守',description:'优先自己完成；任务复杂或耗时且适合交接时派代理。'},
@@ -9,9 +13,9 @@ const agentActivities = [
 let state = null, draft = null, workflow = null, baseline = null, busy = false, connected = false, conflict = false, enableRequested = false, pendingScope = null;
 const clone = value => JSON.parse(JSON.stringify(value));
 const model = id => state?.catalog?.models.find(m => m.id === id);
-const changes = () => !baseline || !draft ? 0 : roles.reduce((count, role) => count + Number(draft[role].model !== baseline.selection[role].model) + Number(draft[role].reasoning_effort !== baseline.selection[role].reasoning_effort), 0) + ['agent_activity', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'].reduce((count, key) => count + Number(workflow[key] !== baseline.workflow[key]), 0);
+const changes = () => !baseline || !draft ? 0 : roles.reduce((count, role) => count + Number(draft[role].model !== baseline.selection[role].model) + Number(draft[role].reasoning_effort !== baseline.selection[role].reasoning_effort), 0) + ['worker_strategy', 'agent_activity', 'activation', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'].reduce((count, key) => count + Number(workflow[key] !== baseline.workflow[key]), 0) + Number(JSON.stringify(workflow.worker_profiles) !== JSON.stringify(baseline.workflow.worker_profiles));
 const dirty = () => changes() > 0;
-const valid = () => Boolean(draft && workflow && agentActivities.some(item => item.id === workflow.agent_activity) && roles.every(role => model(draft[role].model)?.efforts.includes(draft[role].reasoning_effort)) && ['automatic_project','manual'].includes(workflow.activation) && ['current_thread','selected_model'].includes(workflow.coordinator_mode) && Number.isInteger(workflow.max_worker_turns) && workflow.max_worker_turns >= 1 && workflow.max_worker_turns <= 10 && Number.isInteger(workflow.max_parallel_workers) && workflow.max_parallel_workers >= 1 && workflow.max_parallel_workers <= 3 && ['disabled','plan_only'].includes(workflow.planner_mode) && Number.isInteger(workflow.max_planner_turns) && workflow.max_planner_turns >= 1 && workflow.max_planner_turns <= 3 && (workflow.planner_mode === 'disabled' || model(workflow.planner_model)?.efforts.includes(workflow.planner_reasoning_effort)));
+const valid = () => Boolean(draft && workflow && ['fixed','adaptive'].includes(workflow.worker_strategy) && validProfiles() && agentActivities.some(item => item.id === workflow.agent_activity) && roles.every(role => model(draft[role].model)?.efforts.includes(draft[role].reasoning_effort)) && ['automatic_project','manual'].includes(workflow.activation) && ['current_thread','selected_model'].includes(workflow.coordinator_mode) && Number.isInteger(workflow.max_worker_turns) && workflow.max_worker_turns >= 1 && workflow.max_worker_turns <= 10 && Number.isInteger(workflow.max_parallel_workers) && workflow.max_parallel_workers >= 1 && workflow.max_parallel_workers <= 3 && ['disabled','plan_only'].includes(workflow.planner_mode) && Number.isInteger(workflow.max_planner_turns) && workflow.max_planner_turns >= 1 && workflow.max_planner_turns <= 3 && (workflow.planner_mode === 'disabled' || model(workflow.planner_model)?.efforts.includes(workflow.planner_reasoning_effort)));
 const canSave = () => !busy && connected && !conflict && valid() && (dirty() || Boolean(state.saved.error) || (!state.saved.document && (state.scope === 'global' || !state.effective?.document)) || enableRequested);
 const conflictMessage = '配置已在别处更新。已保留你的修改；请放弃修改并重新载入最新配置。';
 
@@ -32,11 +36,35 @@ async function request(path, body) {
 function restoreDraft() {
   draft = clone(state.saved.document?.selection || state.default);
   const {completion_mode, ...currentWorkflow} = clone(state.workflow);
-  workflow = { agent_activity:'balanced', max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...currentWorkflow};
+  workflow = { worker_strategy:'fixed', worker_profiles:{}, agent_activity:'balanced', max_parallel_workers:1, planner_mode:'disabled', planner_model:'', planner_reasoning_effort:'', max_planner_turns:1, ...currentWorkflow};
   if (!state.saved.document && !state.effective?.document && !state.saved.error) workflow.activation = 'manual';
   enableRequested = false;
   baseline = {selection:clone(draft), workflow:clone(workflow), revision:state.saved.revision, globalRevision:state.global_revision};
   conflict = false;
+}
+function renderChoice(select, effort, choice) {
+  select.replaceChildren(); effort.replaceChildren();
+  for (const item of state?.catalog?.models || []) select.add(new Option(item.name, item.id));
+  if (!model(choice?.model)) select.add(new Option(`不可用：${choice?.model || '请选择模型'}`, choice?.model || ''));
+  select.value = choice?.model || '';
+  const supported = model(choice?.model)?.efforts || [];
+  for (const item of supported) effort.add(new Option(efforts[item] || item, item));
+  if (!supported.includes(choice?.reasoning_effort)) effort.add(new Option(`不可用：${choice?.reasoning_effort || '请选择推理强度'}`, choice?.reasoning_effort || ''));
+  effort.value = choice?.reasoning_effort || '';
+}
+function renderExecutionStatus() {
+  const status = state?.scope !== 'global' ? state?.execution_status : null;
+  $('execution-status-lines').replaceChildren();
+  const lines = status ? [
+    status.goal || status.task_id,
+    `${status.task_id} · 更新：${status.updated_at}`,
+    `配置上限：${status.configured_max_parallel_workers} · 已报告容量：${status.reported_host_capacity} · 有效上限：${status.effective_max_parallel_workers}`,
+    `占用（已预留/执行中）：${status.occupied_workers} · 等待：${status.queued_workstreams} · 剩余执行次数：${status.remaining_worker_turns}`,
+    ...(status.ready_workstreams?.length ? [`依赖已满足：${status.ready_workstreams.join('、')}`] : []),
+    ...(status.waiting_workstreams || []).map(item => `等待 ${item.id}：${item.reason}`),
+    '所选项目最近任务的主控报告，可能来自其他聊天；非实时宿主遥测。刷新可重新读取。'
+  ] : ['当前宿主容量：派发时确认/未知', state?.scope === 'global' ? '全局范围不显示项目任务。' : '当前项目暂无任务报告。'];
+  for (const line of lines) {const item = document.createElement('p'); item.textContent = line; $('execution-status-lines').append(item);}
 }
 function render() {
   const available = connected && Boolean(state?.catalog), saved = state?.saved?.document || (state?.scope !== 'global' ? state?.effective?.document : null);
@@ -51,7 +79,7 @@ function render() {
   $('worker-preset').replaceChildren(new Option('选择预设（未保存）', ''));
   for (const preset of state?.presets || []) $('worker-preset').add(new Option(preset.name, preset.id));
   const savedWorker = saved?.selection?.worker;
-  $('worker-default-summary').textContent = savedWorker ? `保存默认：${savedWorker.model} / ${savedWorker.reasoning_effort} · ${$('settings-source').textContent}。设置不确认运行时身份。` : '默认尚未保存；选择预设不会自动保存或启动模型。';
+  $('worker-default-summary').textContent = savedWorker ? `保存默认：${saved?.workflow?.worker_strategy === 'adaptive' ? '自动分级 · 固定模式组合 ' : ''}${savedWorker.model} / ${savedWorker.reasoning_effort} · ${$('settings-source').textContent}。设置不确认运行时身份。` : '默认尚未保存；选择预设不会自动保存或启动模型。';
   $('reset-inherit').hidden = (state?.scope || 'project') !== 'project' || (!state?.saved?.document && !state?.saved?.error);
   $('reset-inherit').disabled = busy || !available || conflict;
   $('refresh').disabled = busy;
@@ -72,7 +100,13 @@ function render() {
       $(`${role}-description`).textContent = model(draft[role].model)?.description || '该模型已不在目录中，请重新选择。';
     }
   }
+  renderExecutionStatus();
   if (workflow) {
+    $('worker-strategy').value = workflow.worker_strategy;
+    $('worker-profiles').hidden = workflow.worker_strategy !== 'adaptive';
+    $('fixed-worker-label').hidden = workflow.worker_strategy !== 'adaptive';
+    for (const tier of workerTiers) renderChoice($(`profile-${tier.id}-model`), $(`profile-${tier.id}-effort`), workflow.worker_profiles?.[tier.id]);
+    $('worker-profile-error').hidden = validProfiles() && ['fixed','adaptive'].includes(workflow.worker_strategy);
     const activityIndex = agentActivities.findIndex(item => item.id === workflow.agent_activity);
     const activity = agentActivities[activityIndex];
     $('agent-activity').value = String(activityIndex < 0 ? 1 : activityIndex);
@@ -135,6 +169,26 @@ async function load(mode = 'initial', scope = state?.scope) {
     if (!valid() && !conflict) notice('当前配置包含不再支持的组合，请更新。', true);
   } catch (error) {connected = false; notice(window.codexDuoTransport ? error.message : '无法连接本地服务，请确认服务运行后刷新。', true);}
   finally {busy = false; render();}
+}
+$('worker-strategy').addEventListener('change', event => {
+  if (busy || !connected || !['fixed','adaptive'].includes(event.target.value)) return;
+  if (event.target.value === 'adaptive' && workflow.worker_profiles && Object.keys(workflow.worker_profiles).length === 0) {
+    workflow.worker_profiles = Object.fromEntries(workerTiers.map(tier => [tier.id, clone(state.suggested_worker_profiles?.[tier.id] || draft.worker)]));
+  }
+  workflow.worker_strategy = event.target.value; edited();
+});
+for (const tier of workerTiers) {
+  $(`profile-${tier.id}-model`).addEventListener('change', event => {
+    const option = model(event.target.value);
+    if (!option || busy || !connected) return;
+    const previous = workflow.worker_profiles?.[tier.id];
+    workflow.worker_profiles = {...workflow.worker_profiles, [tier.id]:{model:option.id, reasoning_effort:option.efforts.includes(previous?.reasoning_effort) ? previous.reasoning_effort : option.default_effort}};
+    edited();
+  });
+  $(`profile-${tier.id}-effort`).addEventListener('change', event => {
+    if (busy || !connected || !workflow.worker_profiles?.[tier.id]) return;
+    workflow.worker_profiles[tier.id].reasoning_effort = event.target.value; edited();
+  });
 }
 function edited() {notice(conflict ? conflictMessage : '', conflict); render();}
 $('worker-preset').addEventListener('change', event => {

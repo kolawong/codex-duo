@@ -6,7 +6,7 @@ from codex_duo_projects import project_path, opt_in_status, enable_and_save, ins
 from codex_duo_selection import (SelectionError, SelectionStore, read_catalog, default_selection,
                               presets, prepare_handoff, digest, validate_selection, saved_workflow, validate_workflow, validate_task)
 from codex_duo_worker import validate_override, worker_summary
-from codex_duo_selection import delegation_decision, validate_assessment, ACTIVITIES
+from codex_duo_selection import delegation_decision, validate_assessment, ACTIVITIES, WORKER_TIERS, suggested_worker_profiles
 
 
 class CodexDuoService:
@@ -28,14 +28,45 @@ class CodexDuoService:
         saved = layers[scope] if scope in ('project', 'global') else self.defaults_store.store(scope).read(catalog)
         effective = layers['effective']
         selected = saved if scope == 'global' else effective
+        selection = (selected['document'] or {}).get('selection', default_selection(catalog))
         return {'catalog': catalog, 'presets': presets(catalog), 'default': (selected['document'] or {}).get('selection', default_selection(catalog)),
                 'saved': saved, 'workflow': saved_workflow(selected['document']),
+                'suggested_worker_profiles': suggested_worker_profiles(selection['worker'], catalog),
+                'execution_status': self.latest_execution() if scope == 'project' else None,
                 'scope': scope, 'source': ('global' if saved['document'] else 'unconfigured') if scope == 'global' else layers['source'],
                 'effective': effective, 'layers': layers, 'global_revision': layers['global']['revision'], 'task_template': self.template,
                 'project_root': str(self.store.directory.parent.resolve()),
                 'project_opt_in': opt_in_status(self.store.directory.parent.resolve()),
                 'storage_path': str(self.defaults_store.store(scope).path), 'current_thread_model': 'unknown',
                 'native_model_switch': False, 'execution_started': False}
+
+    def latest_execution(self):
+        """Last recorded task in this project, never live host telemetry or chat routing."""
+        import re
+        from datetime import datetime, timezone
+        from codex_duo_parallel import ParallelExecution
+        runs = self.store.directory / 'runs'
+        if self.store.directory.is_symlink() or runs.is_symlink() or not runs.is_dir():
+            return None
+        try:
+            files = [p / 'dispatch.json' for p in runs.iterdir()
+                     if re.fullmatch('[a-f0-9]{24}', p.name) and not p.is_symlink()
+                     and (p / 'dispatch.json').is_file() and not (p / 'dispatch.json').is_symlink()]
+            if not files:
+                return None
+            path = max(files, key=lambda p: p.stat().st_mtime_ns)
+            parent = self.execution_plan(path.parent.name)
+            runner = ParallelExecution(self.store, parent)
+            with self.store.lock:
+                status = runner.view(runner.read())
+            fields = ('configured_max_parallel_workers', 'reported_host_capacity', 'effective_max_parallel_workers',
+                      'occupied_workers', 'queued_workstreams', 'ready_workstreams', 'waiting_workstreams', 'remaining_worker_turns')
+            return {**{k: status[k] for k in fields}, 'handoff_id': parent['handoff_id'],
+                    'task_id': parent['task']['task_id'], 'goal': parent['task']['goal'],
+                    'updated_at': datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()}
+        except (OSError, ValueError, KeyError, TypeError, SelectionError):
+            # Invalid/obsolete evidence is not permission to report guessed capacity.
+            return None
 
     def save(self, body):
         if 'project_root' in body:
@@ -111,6 +142,9 @@ class CodexDuoService:
                     '{complexity:simple|moderate|complex,benefit:none|possible|clear,independent:boolean,reason:string}. '
                     'If unnecessary, finish locally without begin/plan/reserve; never launch a classifier or Planner. '
                     'Briefly explain the decision; activity never changes models, efforts or budgets. '
+                    'With worker_strategy=adaptive and no explicit task override, choose routing={tier:light|standard|complex,reason:string} '
+                    'for each independent workstream from the saved worker_profiles. Fixed mode or an explicit task override uses the task pair. '
+                    'Split worthwhile independent scopes even when capacity requires sequential dispatch; never split to fill slots. '
                     'Discover a native worker tool before dispatch; this MCP server does not launch models.'}
 
     def begin(self, body):
@@ -224,6 +258,8 @@ class CodexDuoService:
                 'description': '全局默认：automatic_project 先判断是否值得派代理；manual 仅明确请求时使用。项目覆盖优先。'},
             'agent_activity': {'type': 'string', 'title': '代理积极程度', 'enum': list(ACTIVITIES),
                 'description': '保守：仅复杂且收益明确时委派；均衡（默认）：有明确收益时委派；积极：也尝试有潜在收益的独立工作。简单任务始终由当前聊天完成；不改变模型和预算。'},
+            'worker_strategy': {'type': 'string', 'title': '执行策略', 'enum': ['fixed', 'adaptive'],
+                'description': '固定沿用执行组合；自动分级按子任务选已保存候选。首次启用会填入面板建议组合，之后可逐档修改。'},
             'coordinator_mode': {'type': 'string', 'title': '主控方式',
                 'enum': ['current_thread', 'selected_model'],
                 'description': 'current_thread：当前聊天规划验收；selected_model：另开聊天使用指定主控。'},
@@ -237,17 +273,22 @@ class CodexDuoService:
                 'enum': ['1', '2', '3'], 'description': '默认 1；独立任务可并行，受宿主容量和整个任务总执行次数限制。'},
             'max_worker_turns': {'type': 'string', 'title': '每项任务最多执行轮数',
                 'enum': [str(n) for n in range(1, 11)], 'description': '包括首次执行和修正，达到上限停止。'}})
+        for tier, title in zip(WORKER_TIERS, ('轻量', '标准', '复杂')):
+            properties['worker_profile_' + tier] = {'type': 'string', 'title': title + '候选组合', 'enum': pairs,
+                'description': '仅自动分级使用；由当前聊天说明选择原因，失败不会自动升级。'}
         return {'schema': {'type': 'object', 'properties': properties},
-                'values': self.settings_values(selection, state['workflow']),
+                'values': self.settings_values(selection, state['workflow'], state['suggested_worker_profiles']),
                 'layout': [{'kind': 'group', 'title': 'Codex Duo · 全局默认', 'items': [
                     {'kind': 'property', 'property': r} for r in properties] + [
                     {'kind': 'tool', 'tool': 'codex_duo_open', 'title': '打开模型面板',
                      'description': '管理全局默认与项目覆盖。'}]}]}
 
     @staticmethod
-    def settings_values(selection, workflow):
+    def settings_values(selection, workflow, suggestions=None):
+        profiles = workflow.get('worker_profiles') or suggestions or {tier: selection['worker'] for tier in WORKER_TIERS}
         return {**{r: selection[r]['model'] + ' / ' + selection[r]['reasoning_effort'] for r in selection},
-                **{k: v for k, v in workflow.items() if k != 'completion_mode'}, 'max_worker_turns': str(workflow['max_worker_turns']),
+                **{'worker_profile_' + tier: choice['model'] + ' / ' + choice['reasoning_effort'] for tier, choice in profiles.items()},
+                **{k: v for k, v in workflow.items() if k not in ('completion_mode', 'worker_profiles')}, 'max_worker_turns': str(workflow['max_worker_turns']),
                 'max_parallel_workers': str(workflow['max_parallel_workers']),
                 'max_planner_turns': str(workflow.get('max_planner_turns', 1))}
 
@@ -261,7 +302,15 @@ class CodexDuoService:
             workflow = saved_workflow(saved['document'])
             previous_mode = workflow['planner_mode']
             for role, pair in changes.items():
-                if role in workflow and role != 'completion_mode':
+                if role in ['worker_profile_' + tier for tier in WORKER_TIERS]:
+                    if not isinstance(pair, str) or pair.count(' / ') != 1:
+                        raise SelectionError('invalid_selection', '候选必须为模型 / 推理强度组合。')
+                    if not workflow['worker_profiles']:
+                        workflow['worker_profiles'] = suggested_worker_profiles(selection['worker'], catalog)
+                    model, effort = pair.split(' / ')
+                    workflow['worker_profiles'][role.removeprefix('worker_profile_')] = {'model': model, 'reasoning_effort': effort}
+                    continue
+                if role in workflow and role not in ('completion_mode', 'worker_profiles'):
                     if role in ('max_worker_turns', 'max_parallel_workers', 'max_planner_turns'):
                         if not isinstance(pair, str) or not pair.isascii() or not pair.isdigit():
                             raise SelectionError('invalid_workflow', '最大并行执行代理数必须为 1 到 3。'
@@ -274,6 +323,8 @@ class CodexDuoService:
                     raise SelectionError('invalid_selection', '设置必须为有效的模型 / 推理强度组合。')
                 model, effort = pair.split(' / ')
                 selection[role] = {'model': model, 'reasoning_effort': effort}
+            if workflow['worker_strategy'] == 'adaptive' and not workflow['worker_profiles']:
+                workflow['worker_profiles'] = suggested_worker_profiles(selection['worker'], catalog)
             # Native settings persist one property at a time. Keep the coupled
             # Planner pair valid without weakening enabled-config validation.
             enabling = previous_mode == 'disabled' and changes.get('planner_mode') == 'plan_only'
@@ -290,7 +341,7 @@ class CodexDuoService:
             elif changes.get('planner_model') == '' and workflow['planner_mode'] == 'disabled' and 'planner_reasoning_effort' not in changes:
                 workflow['planner_reasoning_effort'] = ''
             self.defaults_store.global_store.save(selection, catalog, saved['revision'], workflow)
-            return {'values': self.settings_values(selection, workflow)}
+            return {'values': self.settings_values(selection, workflow, suggested_worker_profiles(selection['worker'], catalog))}
 
     def execution_plan(self, identifier):
         # IDs, never caller-supplied paths. Reject linked or tampered snapshots.
@@ -346,6 +397,7 @@ class CodexDuoService:
                     'max_worker_turns': workflow['max_worker_turns'],
                     'max_parallel_workers': workflow['max_parallel_workers'],
                     'agent_activity': workflow['agent_activity'],
+                    'worker_strategy': workflow['worker_strategy'], 'worker_profiles': workflow['worker_profiles'],
                     'delegation': manifest.get('delegation'),
                     'completion_mode': workflow['completion_mode'],
                     'next_tool': 'codex_duo_plan' if current else None, 'task': manifest['task'],

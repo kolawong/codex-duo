@@ -7,7 +7,7 @@ import tempfile
 from codex_duo_completion import completion_view
 from codex_duo import verify as verify_evidence, EvidenceError
 from codex_duo_selection import SelectionError, canonical, digest, validate_task
-from codex_duo_worker import worker_summary, validate_native_dispatch
+from codex_duo_worker import worker_summary, validate_native_dispatch, resolve_stream_worker
 
 
 class ParallelExecution:
@@ -47,6 +47,16 @@ class ParallelExecution:
                 raise ValueError('review project mismatch')
             if value['handoff_id'] != self.parent['handoff_id'] or value['plan_hash'] != digest(value['workstreams']):
                 raise ValueError('plan mismatch')
+            choices = {}
+            for stream in value['workstreams']:
+                worker, resolution = resolve_stream_worker(self.parent, stream.get('routing'))
+                if 'routing' in stream and (stream.get('worker') != worker or stream.get('worker_resolution') != resolution):
+                    raise ValueError('stream worker mismatch')
+                choices[stream['id']] = (worker, resolution)
+            for record in value['dispatches']:
+                worker, resolution = choices[record['workstream_id']]
+                if record.get('requested_worker', worker) != worker or record.get('worker_resolution', resolution) != resolution:
+                    raise ValueError('dispatch worker mismatch')
             return value
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise SelectionError('invalid_dispatch', '派发计划不存在或已损坏，请检查证据。', 409) from exc
@@ -69,7 +79,8 @@ class ParallelExecution:
             raise SelectionError('invalid_plan', '子任务数超过父任务总执行次数，请合并任务并为修正留出预算。')
         ids, owned, prepared = set(), set(), []
         for stream in streams:
-            if not isinstance(stream, dict) or set(stream) != {'id', 'task', 'depends_on'}:
+            if (not isinstance(stream, dict) or not {'id', 'task', 'depends_on'} <= set(stream)
+                    or set(stream) - {'id', 'task', 'depends_on', 'routing'}):
                 raise SelectionError('invalid_plan', '子任务必须提供 id、task 和 depends_on。')
             sid = stream['id']
             if not isinstance(sid, str) or not re.fullmatch('[a-z][a-z0-9_-]{0,39}', sid) or sid in ids:
@@ -83,7 +94,11 @@ class ParallelExecution:
             if not isinstance(dependencies, list) or not all(isinstance(d, str) for d in dependencies) or len(dependencies) != len(set(dependencies)):
                 raise SelectionError('invalid_plan', '依赖必须是唯一子任务 ID 列表。')
             ids.add(sid); owned.update(task['allowed_paths'])
-            prepared.append({'id': sid, 'task': task, 'depends_on': dependencies})
+            worker, resolution = resolve_stream_worker(self.parent, stream.get('routing'))
+            item = {'id': sid, 'task': task, 'depends_on': dependencies}
+            if stream.get('routing') is not None:
+                item.update(routing=stream['routing'], worker=worker, worker_resolution=resolution)
+            prepared.append(item)
         if len({s['task']['task_id'] for s in prepared}) != len(prepared):
             raise SelectionError('invalid_plan', '子任务契约 task_id 必须唯一。')
         resolved = set()
@@ -116,18 +131,40 @@ class ParallelExecution:
                  and set(s['depends_on']) <= completed]
         limit = min(self.parent['max_parallel_workers'], ledger['host_capacity'],
                     ledger['current_host_capacity'], len(ledger['workstreams']))
+        waiting = []
+        for stream in ledger['workstreams']:
+            if stream['id'] in completed or any(d['workstream_id'] == stream['id'] for d in active):
+                continue
+            if remaining <= 0:
+                reason = '父任务总执行次数已用完'
+            elif not set(stream['depends_on']) <= completed:
+                reason = '等待依赖验证：' + '、'.join(d for d in stream['depends_on'] if d not in completed)
+            elif len(active) >= limit:
+                reason = ('达到保存的并行上限' if self.parent['max_parallel_workers'] <= min(
+                    ledger['host_capacity'], ledger['current_host_capacity']) else '达到本任务已报告的宿主容量')
+            else:
+                reason = '可派发，等待主控预留并调用原生工具'
+            waiting.append({'id': stream['id'], 'reason': reason})
+        scheduler = {'configured_max_parallel_workers': self.parent['max_parallel_workers'],
+                     'reported_host_capacity': ledger['current_host_capacity'],
+                     'initial_host_capacity': ledger['host_capacity'],
+                     'effective_max_parallel_workers': limit, 'occupied_workers': len(active),
+                     'queued_workstreams': len(waiting), 'waiting_workstreams': waiting}
         return {'completion': completion_view('worker', self.parent['handoff_id'], ledger['dispatches'],
                 str(self.store.directory.parent.resolve())),
             'handoff_id': self.parent['handoff_id'], 'workstreams': ledger['workstreams'],
             'worker': self.parent['worker'],
+            'worker_strategy': self.parent.get('worker_strategy', 'fixed'),
             'worker_summary': worker_summary(self.parent['worker'], self.parent.get('worker_resolution')),
             'dispatch_summaries': [{'dispatch_id': d['id'], 'native_receipt': d.get('native_receipt'),
-                **worker_summary(self.parent['worker'], self.parent.get('worker_resolution'), d.get('native_dispatch'))}
+                **worker_summary(d.get('requested_worker', self.parent['worker']),
+                                 d.get('worker_resolution', self.parent.get('worker_resolution')), d.get('native_dispatch'))}
                 for d in ledger['dispatches']],
             'dispatch_count': len(ledger['dispatches']),
             'remaining_worker_turns': remaining, 'active_dispatches': active,
             'completed_workstreams': sorted(completed),
             'max_simultaneous_workers': limit, 'ready_workstreams': ready,
+            **scheduler,
             'available_dispatch_slots': max(0, min(remaining, limit - len(active), len(ready))),
             'execution_started': False, 'model_calls': 0,
             'next_tool': 'codex_duo_reserve',
@@ -169,18 +206,18 @@ class ParallelExecution:
             task_path = self.root / 'contracts' / (sid + '.json')
             if json.loads(self.safe(task_path).read_text()) != stream['task']:
                 raise SelectionError('invalid_dispatch', '子任务契约已变化。', 409)
+            worker, resolution = resolve_stream_worker(self.parent, stream.get('routing'))
             self.safe(evidence).mkdir(parents=True, exist_ok=False)
             record = {'id': dispatch_id, 'workstream_id': sid, 'status': 'reserved', 'native_receipt': None,
-                      'requested_worker': self.parent['worker'],
-                      'worker_resolution': self.parent.get('worker_resolution')}
+                      'requested_worker': worker, 'worker_resolution': resolution}
             ledger['current_host_capacity'] = capacity
             ledger['dispatches'].append(record); self.write(self.path, ledger)
             helper = str(Path(__file__).with_name('codex_duo.py').resolve())
             project = str(self.store.directory.parent.resolve())
             command_root = evidence.resolve()
             command_task = str(task_path.resolve())
-            return {**record, 'worker': self.parent['worker'], 'task': stream['task'],
-                'worker_summary': worker_summary(self.parent['worker'], self.parent.get('worker_resolution')),
+            return {**record, 'worker': worker, 'task': stream['task'], 'routing': stream.get('routing'),
+                'worker_summary': worker_summary(worker, resolution),
                 'task_path': str(task_path), 'evidence_root': str(evidence),
                 'evidence_commands': {
                     'snapshot_before_edit': ['python3', '-B', helper, 'snapshot', '--task', command_task,
@@ -203,12 +240,13 @@ class ParallelExecution:
             raise SelectionError('native_receipt_required', '记录实际原生派发返回的执行代理 ID 或失败回执。')
         if body.get('outcome') not in ('completed', 'failed', 'blocked', 'cancelled'):
             raise SelectionError('invalid_outcome', '需要执行完成、失败或阻塞状态。')
-        native_dispatch = validate_native_dispatch(body.get('native_dispatch'), self.parent['worker'], receipt)
         with self.store.lock:
             ledger = self.read()
             record = next((d for d in ledger['dispatches'] if d['id'] == body.get('dispatch_id')), None)
             if record is None:
                 raise SelectionError('invalid_dispatch', '派发不存在。', 409)
+            native_dispatch = validate_native_dispatch(body.get('native_dispatch'),
+                record.get('requested_worker', self.parent['worker']), receipt)
             submission_body = {k: body.get(k) for k in ('dispatch_id', 'outcome', 'native_receipt')}
             if native_dispatch is not None:
                 submission_body['native_dispatch'] = native_dispatch

@@ -515,6 +515,101 @@ final class CodexDuoMenuTests: XCTestCase {
         XCTAssertEqual(service.sent?.selection.coordinator, coordinator)
     }
 
+    func testLegacyAndAdaptiveWorkflowRoundTripAndValidation() throws {
+        var workflow = try state().workflow!
+        XCTAssertEqual(workflow.workerStrategy, "fixed")
+        XCTAssertEqual(workflow.workerProfiles, [:])
+        XCTAssertEqual(workflow.agentActivity, "balanced")
+        workflow.workerStrategy = "adaptive"
+        XCTAssertFalse(workflow.isValid)
+        workflow.workerProfiles = Dictionary(uniqueKeysWithValues: WorkerTier.allCases.map { ($0.rawValue, ModelChoice(model: "alpha", reasoningEffort: "high")) })
+        XCTAssertTrue(workflow.isValid)
+        XCTAssertTrue(workflow.workerChoicesValid(in: try state().catalog))
+        XCTAssertEqual(try JSONDecoder().decode(Workflow.self, from: JSONEncoder().encode(workflow)), workflow)
+        workflow.workerProfiles["light"]?.reasoningEffort = "ultra"
+        XCTAssertFalse(workflow.workerChoicesValid(in: try state().catalog))
+        workflow.workerStrategy = "fixed"
+        XCTAssertFalse(workflow.workerChoicesValid(in: try state().catalog), "retained fixed profiles still need validation")
+        workflow.workerProfiles["extra"] = ModelChoice(model: "alpha", reasoningEffort: "high")
+        XCTAssertFalse(workflow.isValid)
+    }
+
+    @MainActor func testAdaptiveDraftSeedsOnlyOnExplicitToggleAndPreservesOtherSettings() async throws {
+        var incoming = try state()
+        incoming.suggestedWorkerProfiles = ["light": ModelChoice(model: "alpha", reasoningEffort: "low"),
+            "standard": ModelChoice(model: "alpha", reasoningEffort: "high"), "complex": ModelChoice(model: "alpha", reasoningEffort: "high")]
+        let service = StubService(incoming)
+        let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+        await store.refresh()
+        XCTAssertFalse(store.isDirty); XCTAssertNil(store.executionStatus)
+        XCTAssertEqual(store.draft?.workflow.workerProfiles, [:])
+        let before = store.draft!
+        store.selectWorkerStrategy("adaptive")
+        XCTAssertEqual(store.draft?.workflow.workerProfiles["light"]?.reasoningEffort, "low")
+        XCTAssertTrue(store.canSave); XCTAssertNil(service.sent)
+        XCTAssertEqual(store.draft?.selection, before.selection)
+        XCTAssertEqual(store.draft?.workflow.maxParallelWorkers, before.workflow.maxParallelWorkers)
+        store.draft?.workflow.workerProfiles["standard"]?.model = "beta"
+        XCTAssertFalse(store.canSave)
+        store.draft?.workflow.workerProfiles["standard"]?.reasoningEffort = "medium"
+        store.selectWorkerStrategy("fixed"); store.selectWorkerStrategy("adaptive")
+        XCTAssertEqual(store.draft?.workflow.workerProfiles["standard"]?.model, "beta")
+        await store.refresh()
+        XCTAssertEqual(store.draft?.workflow.workerProfiles["standard"]?.model, "beta")
+        let sent = store.draft!
+        service.saved = SavedState(document: SavedDocument(selection: sent.selection, workflow: sent.workflow, savedAt: "now"), revision: "saved", error: nil)
+        await store.save()
+        XCTAssertEqual(service.sent?.workflow.workerStrategy, "adaptive")
+        XCTAssertEqual(service.sent?.workflow.workerProfiles, sent.workflow.workerProfiles)
+        XCTAssertFalse(store.isDirty)
+        store.selectWorkerStrategy("fixed")
+        XCTAssertEqual(store.draft?.workflow.workerProfiles, sent.workflow.workerProfiles)
+    }
+
+    @MainActor func testAdaptiveProfilesRespectConflictGlobalSaveAndInheritance() async throws {
+        var incoming = try inherited()
+        incoming.workflow?.workerStrategy = "adaptive"
+        incoming.workflow?.workerProfiles = Dictionary(uniqueKeysWithValues: WorkerTier.allCases.map { ($0.rawValue, ModelChoice(model: "alpha", reasoningEffort: "high")) })
+        let service = StubService(incoming)
+        let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+        await store.refresh()
+        XCTAssertFalse(store.canSave)
+        store.draft?.workflow.workerProfiles["light"]?.reasoningEffort = "low"
+        var external = incoming; external.globalRevision = "external"
+        service.response = external; await store.refresh()
+        XCTAssertTrue(store.hasExternalChange); XCTAssertFalse(store.canSave)
+        XCTAssertEqual(store.draft?.workflow.workerProfiles["light"]?.reasoningEffort, "low")
+        service.resetResponse = incoming; await store.refresh(discardDraft: true)
+        store.draft?.workflow.workerProfiles["light"]?.reasoningEffort = "low"
+        await store.resetToInherit()
+        XCTAssertEqual(store.draft?.workflow.workerProfiles["light"]?.reasoningEffort, "high")
+        var global = incoming; global.scope = "global"; global.source = "global"; global.saved = global.effective
+        service.response = global; await store.requestScope("global")
+        store.draft?.workflow.workerProfiles["light"]?.reasoningEffort = "low"
+        let draft = store.draft!
+        service.saved = SavedState(document: SavedDocument(selection: draft.selection, workflow: draft.workflow, savedAt: "now"), revision: "new-global", error: nil)
+        await store.save()
+        XCTAssertEqual(service.sent?.scope, "global")
+        XCTAssertEqual(service.sent?.workflow.workerProfiles["light"]?.reasoningEffort, "low")
+        XCTAssertEqual(service.sent?.expectedGlobalRevision, "global-first")
+    }
+
+    @MainActor func testReportedExecutionStatusDecodesAndNeverChangesSettings() throws {
+        let raw = #"{"handoff_id":"h","task_id":"recent","goal":"目标","updated_at":"2026-10-15T12:00:00Z","configured_max_parallel_workers":3,"reported_host_capacity":2,"effective_max_parallel_workers":2,"occupied_workers":1,"queued_workstreams":2,"ready_workstreams":["ready"],"waiting_workstreams":[{"id":"later","reason":"等待依赖 first"}],"remaining_worker_turns":4}"#
+        var incoming = try state()
+        incoming.executionStatus = try JSONDecoder().decode(ExecutionStatus.self, from: Data(raw.utf8))
+        let store = SettingsStore(projectRoot: "/isolated/project", client: StubService(incoming))
+        try store.apply(incoming)
+        XCTAssertEqual(store.executionStatus?.taskID, "recent")
+        XCTAssertEqual(store.executionStatus?.waitingWorkstreams.first?.reason, "等待依赖 first")
+        XCTAssertTrue(store.executionStatus?.capacitySummary.contains("已报告容量：2") == true)
+        XCTAssertTrue(store.executionStatus?.queueSummary.contains("占用（已预留/执行中）：1") == true)
+        XCTAssertEqual(store.draft?.workflow.maxParallelWorkers, 1)
+        XCTAssertFalse(store.isDirty)
+        incoming.scope = "global"; try store.apply(incoming, discardDraft: true)
+        XCTAssertNil(store.executionStatus)
+    }
+
 }
 
 final class HistoryMigrationTests: XCTestCase {

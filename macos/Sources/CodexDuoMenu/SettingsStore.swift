@@ -16,10 +16,27 @@ final class SettingsStore {
         }
     }
     private(set) var catalog: Catalog?
+    private(set) var suggestedWorkerProfiles: [String: ModelChoice] = [:]
+    private(set) var executionStatus: ExecutionStatus?
     private(set) var presets: [WorkerPreset] = []
     var workerDefaultSummary: String {
         guard !needsSave, let worker = baseline?.selection.worker else { return "默认尚未保存" }
-        return "保存默认：\(worker.model) / \(worker.reasoningEffort) · \(sourceLabel)"
+        return "保存默认：\(baseline?.workflow.workerStrategy == "adaptive" ? "自动分级 · 固定模式组合 " : "")\(worker.model) / \(worker.reasoningEffort) · \(sourceLabel)"
+    }
+
+    func selectWorkerStrategy(_ strategy: String) {
+        guard !isBusy, ["fixed", "adaptive"].contains(strategy), var value = draft else { return }
+        if strategy == "adaptive", value.workflow.workerProfiles.isEmpty {
+            for tier in WorkerTier.allCases {
+                value.workflow.workerProfiles[tier.rawValue] = suggestedWorkerProfiles[tier.rawValue] ?? value.selection.worker
+            }
+        }
+        value.workflow.workerStrategy = strategy
+        draft = value
+    }
+    var workerValidationMessage: String? {
+        guard let draft, !draft.workflow.workerChoicesValid(in: catalog) else { return nil }
+        return "三档候选必须完整，且模型与推理强度均受本机目录支持；请重新选择，不会自动升级模型。"
     }
 
     func applyPreset(_ preset: WorkerPreset) {
@@ -95,6 +112,7 @@ final class SettingsStore {
             let previousRoot = projectRoot
             projectRoot = canonical; client = newClient
             catalog = candidate.catalog; draft = candidate.draft; baseline = candidate.baseline
+            suggestedWorkerProfiles = candidate.suggestedWorkerProfiles; executionStatus = candidate.executionStatus
             presets = candidate.presets
             revision = candidate.revision; needsSave = candidate.needsSave
             scope = candidate.scope; source = candidate.source; globalRevision = candidate.globalRevision
@@ -119,6 +137,7 @@ final class SettingsStore {
         guard let draft, !isBusy, !hasExternalChange else { return false }
         return (isDirty || needsSave || requiresProjectEnable) && draft.selection.worker.isValid(in: catalog)
             && draft.selection.coordinator.isValid(in: catalog) && draft.workflow.isValid
+            && draft.workflow.workerChoicesValid(in: catalog)
             && (draft.workflow.plannerMode == "disabled" || draft.workflow.plannerChoice.isValid(in: catalog))
     }
 
@@ -147,6 +166,8 @@ final class SettingsStore {
         }
         self.catalog = catalog
         presets = state.presets ?? []
+        suggestedWorkerProfiles = state.suggestedWorkerProfiles ?? [:]
+        executionStatus = incomingScope == "project" ? state.executionStatus : nil
         projectEnabled = state.projectOptIn?.enabled == true
         savedWarning = saved.error?.message ?? (incomingScope == "project" ? state.effective?.error?.message : nil)
         let incoming = Draft(selection: selection, workflow: state.workflow ?? saved.document?.workflow ?? .initial)

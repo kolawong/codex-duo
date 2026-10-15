@@ -290,7 +290,7 @@ for (const transport of ['mcp','http']) {
       assert.equal(save.body.workflow.agent_activity,activity);
       assert.deepEqual(save.body.selection,selection,'activity leaves models and efforts intact');
       assert.deepEqual({...save.body.workflow,agent_activity:undefined},
-        {...workflow,planner_mode:'disabled',planner_model:'',planner_reasoning_effort:'',max_planner_turns:1,agent_activity:undefined},
+        {...workflow,worker_strategy:'fixed',worker_profiles:{},planner_mode:'disabled',planner_model:'',planner_reasoning_effort:'',max_planner_turns:1,agent_activity:undefined},
         'activity leaves activation, planner and budgets intact');
       assert.equal(h.control('save').disabled,true);
       await h.fire('refresh');
@@ -331,3 +331,71 @@ for (const transport of ['mcp','http']) {
   assert.equal(invalidStop.control('save').disabled,false);
 }
 console.log('Agent activity: legacy clean reads, all stops, global/project save/reload, isolated values, draft refresh, conflicts, discard, inheritance reset and invalid values passed.');
+
+for (const transport of ['mcp','http']) {
+  const profiles = {light:{model:'small',reasoning_effort:'low'},standard:copy(selection.worker),complex:copy(selection.worker)};
+  const first=snapshot();first.suggested_worker_profiles=copy(profiles);
+  const h=await harness(transport,first);
+  assert.equal(h.control('worker-strategy').value,'fixed');
+  assert.equal(h.control('worker-profiles').hidden,true);
+  assert.equal(h.control('save').disabled,true,'old settings read clean');
+  assert.ok(h.control('execution-status-lines').children[0].textContent.includes('派发时确认/未知'));
+  await h.fire('worker-strategy','change','adaptive');
+  assert.equal(h.control('profile-light-model').value,'small');
+  assert.equal(h.control('profile-light-effort').value,'low');
+  assert.deepEqual(h.control('profile-light-effort').children.map(item=>item.value),['low','medium']);
+  assert.equal(h.control('worker-profiles').hidden,false);
+  assert.equal(h.control('max-parallel-workers').value,'1');
+  await h.fire('profile-standard-model','change','small');
+  assert.equal(h.control('profile-standard-effort').value,'medium');
+  await h.fire('worker-strategy','change','fixed');
+  await h.fire('worker-strategy','change','adaptive');
+  assert.equal(h.control('profile-standard-model').value,'small','toggle keeps edited profiles');
+  await h.fire('refresh');
+  assert.equal(h.control('profile-standard-model').value,'small','refresh preserves profile draft');
+  await h.fire('save');
+  const saved=h.calls.find(item=>item.path==='/api/selection').body;
+  assert.equal(saved.workflow.worker_strategy,'adaptive');
+  assert.equal(saved.workflow.worker_profiles.standard.model,'small');
+  assert.deepEqual(saved.selection,selection,'profiles do not change fallback or coordinator');
+  assert.equal(saved.workflow.agent_activity,'balanced');
+  await h.fire('worker-strategy','change','fixed');await h.fire('save');
+  assert.equal(h.latest.workflow.worker_profiles.standard.model,'small','fixed save retains profiles');
+  const active=snapshot();active.workflow.worker_strategy='adaptive';active.workflow.worker_profiles=copy(profiles);
+  active.saved.document.workflow=copy(active.workflow);
+  active.execution_status={handoff_id:'h1',task_id:'recent-task',goal:'最近的目标',updated_at:'2026-10-15T12:00:00Z',configured_max_parallel_workers:3,reported_host_capacity:2,effective_max_parallel_workers:2,occupied_workers:1,queued_workstreams:2,ready_workstreams:['ready'],waiting_workstreams:[{id:'later',reason:'等待依赖 first'}],remaining_worker_turns:4};
+  const reported=await harness(transport,active);
+  const statusText=reported.control('execution-status-lines').children.map(item=>item.textContent).join('\n');
+  assert.match(statusText,/recent-task · 更新：2026-10-15T12:00:00Z/);
+  assert.match(statusText,/已报告容量：2/);assert.match(statusText,/占用（已预留\/执行中）：1/);
+  assert.match(statusText,/等待 later：等待依赖 first/);assert.match(statusText,/非实时宿主遥测/);
+  assert.equal(reported.control('max-parallel-workers').value,'1','reported status never changes cap');
+  const global=copy(active);global.scope='global';global.source='global';
+  const globalUI=await harness(transport,global);
+  assert.ok(globalUI.control('execution-status-lines').children[0].textContent.includes('未知'));
+  for(const scope of ['global','project']) {
+    const scoped=copy(first);scoped.scope=scope;scoped.source=scope;scoped.global_revision='g1';
+    const scopedUI=await harness(transport,scoped);
+    await scopedUI.fire('worker-strategy','change','adaptive');await scopedUI.fire('save');
+    assert.equal(scopedUI.calls.find(item=>item.path==='/api/selection').body.scope,scope);
+  }
+  const conflict=await harness(transport,active);
+  await conflict.fire('profile-light-effort','change','medium');
+  const external=copy(active);external.saved.revision='external';
+  conflict.latest=external;await conflict.fire('refresh');
+  assert.equal(conflict.control('profile-light-effort').value,'medium');assert.equal(conflict.control('save').disabled,true);
+  await conflict.fire('restore');await conflict.fire('discard-confirm');
+  assert.equal(conflict.control('profile-light-effort').value,'low');
+  const reset=await harness(transport,active);
+  await reset.fire('profile-light-effort','change','medium');
+  const inherited=copy(active);inherited.scope='project';inherited.source='global';inherited.global_revision='g2';inherited.effective=copy(active.saved);inherited.saved={revision:'none',document:null,error:null};
+  reset.resetState=inherited;await reset.fire('reset-inherit');await reset.fire('reset-confirm');
+  assert.equal(reset.control('profile-light-effort').value,'low');assert.equal(reset.control('save').disabled,true);
+  for(const badProfiles of [{}, {light:profiles.light}, {...profiles,extra:profiles.light}, {...profiles,light:{model:'small',reasoning_effort:'ultra'}},null]) {
+    const malformed=copy(active);malformed.workflow.worker_profiles=badProfiles;malformed.saved.document.workflow=copy(malformed.workflow);
+    const invalid=await harness(transport,malformed);
+    assert.equal(invalid.control('save').disabled,true);assert.equal(invalid.control('worker-profile-error').hidden,false);
+    await invalid.fire('save');assert.equal(invalid.calls.filter(item=>item.path==='/api/selection').length,0);
+  }
+}
+console.log('Adaptive workers: clean legacy defaults, draft-only starter profiles, catalog validation, fixed retention, scoped saves, conflicts/inheritance and unknown/reported capacity passed.');

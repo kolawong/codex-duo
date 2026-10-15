@@ -61,6 +61,15 @@
       <legend class="sr-only">Codex Duo 默认配置</legend>
       <section class="section" aria-labelledby="worker-heading">
         <h2 id="worker-heading">执行代理</h2>
+        <div class="card strategy-card"><div class="field-row"><label for="worker-strategy">代理策略</label><select id="worker-strategy"><option value="fixed">固定</option><option value="adaptive">自动分级</option></select></div></div>
+        <div id="worker-profiles" class="card profile-card" hidden>
+          <div class="profile-tier"><h3>轻量</h3><div class="field-row"><label for="profile-light-model">模型</label><select id="profile-light-model" aria-label="轻量模型"></select></div><div class="field-row"><label for="profile-light-effort">推理强度</label><select id="profile-light-effort" aria-label="轻量推理强度"></select></div></div>
+          <div class="profile-tier"><h3>标准</h3><div class="field-row"><label for="profile-standard-model">模型</label><select id="profile-standard-model" aria-label="标准模型"></select></div><div class="field-row"><label for="profile-standard-effort">推理强度</label><select id="profile-standard-effort" aria-label="标准推理强度"></select></div></div>
+          <div class="profile-tier"><h3>复杂</h3><div class="field-row"><label for="profile-complex-model">模型</label><select id="profile-complex-model" aria-label="复杂模型"></select></div><div class="field-row"><label for="profile-complex-effort">推理强度</label><select id="profile-complex-effort" aria-label="复杂推理强度"></select></div></div>
+        </div>
+        <p class="footnote">先判断是否值得委派，再按任务选择档位；只使用保存的候选组合，不会自动升级模型。</p>
+        <p id="worker-profile-error" class="footnote profile-error" role="alert" hidden>三档候选必须完整，且模型与推理强度均受本机目录支持；请重新选择，不会自动升级模型。</p>
+        <h3 id="fixed-worker-label" class="profile-label" hidden>固定模式组合</h3>
         <div class="field-row"><label for="worker-preset">预设</label><select id="worker-preset"><option value="">选择预设（未保存）</option></select></div>
         <div class="card"><div class="field-row"><label for="worker-model"><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6" rx=".5"/><path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3"/></svg></span>模型</label><select id="worker-model" aria-describedby="worker-description"></select></div><div class="divider"></div><div class="field-row"><label for="worker-effort"><span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 0 0-5.7-1.3A4 4 0 0 0 3 8a4 4 0 0 0-1 6.6A4 4 0 0 0 6 20a3 3 0 0 0 6-1V5Zm0 0a3 3 0 0 1 5.7-1.3A4 4 0 0 1 21 8a4 4 0 0 1 1 6.6A4 4 0 0 1 18 20a3 3 0 0 1-6-1M6 4c0 2 1 3 2 3M3 8c1 0 3 1 3 3m-3 5c1-2 3-2 4-1m11-11c0 2-1 3-2 3m5 1c-1 0-3 1-3 3m3 5c-1-2-3-2-4-1"/></svg></span>推理强度</label><div class="effort-control"><span id="worker-meter" class="effort-meter" aria-hidden="true"></span><select id="worker-effort"></select></div></div></div>
         <div class="card activity-card">
@@ -71,6 +80,10 @@
         </div>
         <p class="footnote" id="worker-default-summary"></p>
         <p class="footnote">单次使用可在聊天说「这次用 Luna low，下次仍用默认」。任务摘要显示本次来源与宿主确认情况。</p><p class="sr-only" id="worker-description"></p>
+      </section>
+      <section class="section" aria-labelledby="execution-heading">
+        <h2 id="execution-heading">最近任务</h2>
+        <div id="execution-status-lines" class="card execution-status" role="status"></div>
       </section>
       <section class="section" aria-labelledby="activation-heading">
         <h2 id="activation-heading">启用方式</h2>

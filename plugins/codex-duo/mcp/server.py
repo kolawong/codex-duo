@@ -14,7 +14,7 @@ from codex_duo_selection import SelectionError
 from codex_duo_projects import project_path
 from codex_duo_selection import ASSESSMENT_SCHEMA
 
-VERSION = '0.10.0'
+VERSION = '0.11.0'
 RESOURCE = 'ui://codex-duo/model-desk-v4'
 MIME = 'text/html;profile=mcp-app'
 EMPTY = {'type': 'object', 'properties': {}, 'additionalProperties': False}
@@ -82,7 +82,9 @@ def tool_definitions():
                  'required': ['schema', 'values']}),
         tool('codex_duo_settings_update', '更新 Codex Duo 原生设置', object_schema({'set': {
              'type': 'object', 'properties': {key: {'type': 'string'} for key in
-                 ('coordinator', 'worker', 'activation', 'agent_activity', 'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns')},
+                 ('coordinator', 'worker', 'activation', 'agent_activity', 'worker_strategy',
+                  'worker_profile_light', 'worker_profile_standard', 'worker_profile_complex',
+                  'coordinator_mode', 'max_worker_turns', 'max_parallel_workers', 'planner_mode', 'planner_model', 'planner_reasoning_effort', 'max_planner_turns')},
              'minProperties': 1, 'additionalProperties': False}}), readonly=False,
              outputSchema={'type': 'object', 'properties': {'values': {'type': 'object'}}, 'required': ['values']})]
     for operation, properties, required in [
@@ -123,7 +125,7 @@ def tool_definitions():
         elif definition['name'] == 'codex_duo_execution_plan':
             definition['description'] = '只读校验已有交接并报告状态、模型和派发资格；不建立 workstreams，不启动模型，也不切换当前聊天。它不同于 codex_duo_plan；只在 ready_for_native_worker 时才继续 plan。'
         elif definition['name'] == 'codex_duo_plan':
-            definition['description'] = '为 codex_duo_begin 返回的 ready_for_native_worker 交接建立持久 workstreams 和容量计划，不调用模型。不是 Planner 推理，也不是 execution_plan 状态读取。旧式 prepare 或 selected_model 交接会被拒绝。'
+            definition['description'] = '为 ready_for_native_worker 交接固定独立子任务和容量计划，不调用模型。workstreams 每项为 {id,task,depends_on}；自动分级且无本次覆盖时必须额外提供 routing={tier:light|standard|complex,reason:string}，从快照候选解析各自模型/强度；固定模式或本次覆盖不传 routing。明确所有权不重叠，依赖验证后才派发。返回保存上限、主控报告宿主容量、占用与等待原因；多任务可受容量限制顺序执行，不为凑数拆分。共享父任务预算，不自动升级。旧式 prepare 或 selected_model 交接拒绝。'
         if definition['name'] in ('codex_duo_reserve', 'codex_duo_planner_reserve', 'codex_duo_planner_begin'):
             definition['annotations']['idempotentHint'] = False
     # Each call is scoped independently. Omitted root remains a legacy fixed-root fallback.

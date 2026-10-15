@@ -107,6 +107,7 @@ class PackageCommandTests(unittest.TestCase):
             self.assertFalse(replies[3]['result'].get('isError'), replies[3])
             self.assertEqual(set(replies[3]['result']['structuredContent']['values']), {
                 'coordinator', 'worker', 'activation', 'agent_activity', 'coordinator_mode',
+                'worker_strategy', 'worker_profile_light', 'worker_profile_standard', 'worker_profile_complex',
                 'max_worker_turns', 'max_parallel_workers', 'planner_mode',
                 'planner_model', 'planner_reasoning_effort', 'max_planner_turns'})
             self.assertFalse((Path(tmp) / 'project' / '.codex-duo').exists())

@@ -31,6 +31,30 @@ The immutable handoff includes `worker_resolution={override,sources}` and the ef
 selection. Same task_id + same contract/override reuses that snapshot and ledger after restarts
 or settings changes; conflicting requests fail instead of creating another budget.
 
+`workflow.worker_strategy` is fixed (legacy default) or adaptive. `worker_profiles`
+is empty in legacy/fixed settings, or has exactly light/standard/complex, each an exact
+catalog-valid `{model,reasoning_effort}` pair. Adaptive requires all three. Reads never
+populate or save suggestions. New snapshots bind the strategy and candidate pairs;
+old snapshots keep their original bytes and hashes.
+
+In adaptive mode without a task override, each plan stream is
+`{id,task,depends_on,routing:{tier:light|standard|complex,reason:string}}`.
+The current chat selects a tier and concrete reason (1..600 characters); the service
+resolves that candidate from the immutable parent snapshot and persists the pair/reason
+in the plan hash. Arbitrary per-stream models and effort values are rejected. Fixed mode
+or an explicit task override (even one field) rejects routing and keeps the resolved task
+pair. Corrections preserve the chosen pair and consume the same parent budget.
+`complete` checks the recorded native parameters against that dispatch's Worker;
+per-dispatch summaries never substitute the parent default for a selected candidate.
+
+Independent workstreams may be queued at capacity 1, or run concurrently up to the
+minimum of saved max_parallel_workers, initial/current reported host capacity, ready
+workstreams and remaining parent turns. Overlapping ownership and cyclic dependencies
+remain invalid. Plan exposes capacity, occupied reservations and waiting reasons.
+The panel's execution_status is the most recently updated project task, not live host
+telemetry or the current chat. Missing/invalid evidence has unknown capacity; reading
+status does not create files, launch models or bind the menu project to chats.
+
 reserve.worker is the dispatch contract: use the actual native codex_duo_worker role,
 its exact model/effort and fork_turns=none. The reservation is not proof of execution.
 complete may attach `native_dispatch={tool,agent_id,parameters,runtime?}`, where parameters

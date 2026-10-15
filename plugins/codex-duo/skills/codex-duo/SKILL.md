@@ -94,12 +94,27 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
 3. Read the actual native tool capacity (worker slots available to THIS parent task in total,
    including its reserved/running workers, excluding the coordinator and other tasks). Never
    change host configuration to increase it. If capacity is unknown, use 1 conservatively.
-   Plan one workstream for bounded delegated work. Split only clearly independent work: each workstream
+   Use one workstream for a single bounded assignment. Identify worthwhile independent workstreams
+   even when only one host slot is available: multiple streams may run sequentially. Split only
+   clearly independent work, never to fill slots or create a second reviewer: each workstream
    has a unique id, complete task contract, exact disjoint allowed_paths, and depends_on IDs.
    Coordinate shared interfaces before dispatch; consolidate overlapping file edits into one
    owner. Reject circular dependencies or replan conflicts. Do not split merely to fill slots.
    Use codex_duo_plan with project_root, handoff_id, host_capacity and optional workstreams
-   (array of {id, task, depends_on}). The omitted list uses the original task as one worker.
+   (array of {id, task, depends_on, routing?}). With `workflow.worker_strategy=adaptive` and
+   no explicit task Worker override, **every stream requires**
+   `routing={tier:light|standard|complex,reason:string}`. Assess the actual subtask in this chat:
+   light for bounded repetitive work with clear checks, standard for ordinary independent
+   implementation, complex for difficult reasoning or broad dependencies. Do not equate the
+   parent's complexity or agent_activity with every child's tier. Reason is a concrete 1..600
+   character explanation. Use only the saved `workflow.worker_profiles` exact model/effort
+   combinations; do not invent a model range, launch a classifier, or auto-upgrade after failure.
+   Fixed mode (the legacy default), or any explicit task Worker override, uses the resolved
+   task pair for every stream; omit routing in those cases. A partial override fixes both
+   resolved fields and must not be combined with another tier. The omitted stream list is
+   available only for fixed/overridden tasks. Confirm the native tool supports **each** chosen
+   candidate before reserving; unsupported candidates are a disclosed limitation, never a
+   silent fallback. Plan fixes each chosen combination and reason for all later corrections.
    The service persists the plan and concrete contracts without launching any model.
 4. Immediately before EVERY initial native spawn or correction/follow-up, call codex_duo_reserve
    with project_root, handoff_id, workstream_id and current confirmed host_capacity. The
@@ -142,6 +157,12 @@ when the user explicitly requests a new chat. Settings alone do not authorize cr
    Receipts are coordinator supplied; the ledger enforces accounting for adapter calls but
    cannot intercept direct native tool calls. Never bypass reserve or claim model provenance
    from ledger/hash success alone. At exhaustion stop dispatch and report remaining work.
+
+The plan/status exposes the saved maximum, reported host capacity, effective limit,
+occupied reservations, queued workstreams and waiting reasons. `execution_status` in the
+settings panel is the latest recorded task **in that project**, not this chat's routing or
+live telemetry. Its timestamp is the last ledger update; capacity remains unconfirmed
+until dispatch, and reserved does not prove a Worker started. Reload to read a new snapshot.
 
 ## Wait for results in the coordinating chat
 
@@ -219,7 +240,8 @@ For “这次用 Luna low，完成后下次仍用默认”, call the actual begi
 Each field resolves: explicit task value > project preference > global default, then the
 final pair is validated. Omitted fields inherit, with no automatic effort adjustment or
 model upgrade/downgrade. A new task with no override uses saved defaults again. The activity
-assessment only decides whether to delegate; never change the model/effort based on it
+assessment only decides whether to delegate; automatic tiering is a separate saved policy.
+Never change the model/effort based on activity alone
 or launch an extra Planner. Independent read-only planning still
 requires its own explicit request. The settings “轻任务” preset fills only the Worker draft
 with Luna low; it changes persistent defaults only after an explicit Save.

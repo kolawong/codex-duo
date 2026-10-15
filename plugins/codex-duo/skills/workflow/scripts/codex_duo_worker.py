@@ -1,8 +1,29 @@
 """Task-local Worker choices and coordinator-recorded host evidence. No inference."""
-from codex_duo_selection import SelectionError, canonical
+from codex_duo_selection import SelectionError, canonical, WORKER_TIERS
 import json
 
 FIELDS = ('model', 'reasoning_effort')
+
+
+def resolve_stream_worker(parent, routing=None):
+    """Resolve from the immutable task policy, not today's settings or a classifier."""
+    if routing is not None and (not isinstance(routing, dict)
+            or set(routing) != {'tier', 'reason'} or routing['tier'] not in WORKER_TIERS
+            or not isinstance(routing['reason'], str) or not routing['reason'].strip()
+            or len(routing['reason']) > 600):
+        raise SelectionError('invalid_routing', '子任务分级须包含 tier（light/standard/complex）和 1 到 600 字的具体 reason。')
+    worker, resolution = parent['worker'], parent.get('worker_resolution')
+    # Even a partial explicit override fixes the resolved task pair; never combine it
+    # with a different tier to silently change an omitted field.
+    if parent.get('worker_strategy', 'fixed') == 'fixed' or (resolution or {}).get('override'):
+        if routing is not None:
+            raise SelectionError('routing_not_enabled', '固定模式或本次显式覆盖使用任务组合，无需传入子任务分级。')
+        return worker, resolution
+    if routing is None:
+        raise SelectionError('routing_required', '自动分级须在 plan 中为每个子任务提供 routing；由当前聊天判断，不启动分类器。')
+    choice = parent['worker_profiles'][routing['tier']]
+    return {**worker, **choice}, {'override': {}, 'sources': {k: 'profile_' + routing['tier'] for k in FIELDS},
+                                 'routing': routing}
 
 
 def validate_override(value):
@@ -36,6 +57,7 @@ def worker_summary(worker, resolution=None, native_dispatch=None):
     sources = (resolution or {}).get('sources', {k: 'legacy_snapshot' for k in FIELDS})
     runtime = (native_dispatch or {}).get('runtime', {})
     labels = {'task_override': '本次覆盖', 'project': '项目配置', 'global': '全局默认', 'legacy_snapshot': '旧任务快照'}
+    labels.update({'profile_light': '轻量候选', 'profile_standard': '标准候选', 'profile_complex': '复杂候选'})
     origin = labels[sources['model']] if sources['model'] == sources['reasoning_effort'] else (
         f"模型={labels[sources['model']]}，强度={labels[sources['reasoning_effort']]}")
     host = {k: {'status': 'provided' if k in runtime else 'not_provided', 'value': runtime.get(k)} for k in FIELDS}

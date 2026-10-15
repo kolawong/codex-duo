@@ -31,6 +31,8 @@ struct SettingsView: View {
                 d.workflow.maxWorkerTurns != b.workflow.maxWorkerTurns,
                 d.workflow.maxParallelWorkers != b.workflow.maxParallelWorkers,
                 d.workflow.agentActivity != b.workflow.agentActivity,
+                d.workflow.workerStrategy != b.workflow.workerStrategy,
+                d.workflow.workerProfiles != b.workflow.workerProfiles,
                 d.workflow.coordinatorMode != b.workflow.coordinatorMode,
                 d.workflow.plannerMode != b.workflow.plannerMode,
                 d.workflow.plannerModel != b.workflow.plannerModel,
@@ -220,12 +222,36 @@ struct SettingsView: View {
                     .disabled(store.isBusy)
                 }
                 Card {
+                    FieldRow(label: "代理策略", systemImage: "arrow.triangle.branch",
+                             changed: draft?.workflow.workerStrategy != baseline?.workflow.workerStrategy) {
+                        PopupPicker(label: "代理策略", options: [PickerOption(id: "fixed", title: "固定"), PickerOption(id: "adaptive", title: "自动分级")],
+                                    selection: Binding(get: { draft?.workflow.workerStrategy ?? "fixed" }, set: { store.selectWorkerStrategy($0) }), minWidth: 150)
+                    }
+                    CardDivider(inset: 0)
+                    if draft?.workflow.workerStrategy == "adaptive" {
+                        ForEach(WorkerTier.allCases) { tier in
+                            VStack(spacing: 0) {
+                                Text(tier.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 8)
+                                ModelFields(choice: profile(tier), baseline: baseline?.workflow.workerProfiles[tier.rawValue], catalog: store.catalog)
+                                CardDivider(inset: 0)
+                            }
+                        }
+                        Text("固定模式组合").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 8)
+                    }
                     ModelFields(choice: choice(coordinator: false), baseline: baseline?.selection.worker,
                                 catalog: store.catalog)
                     CardDivider(inset: 0)
                     AgentActivitySlider(selection: workflow(\.agentActivity, fallback: "balanced"),
                                         changed: draft?.workflow.agentActivity != baseline?.workflow.agentActivity)
                 }
+                Text("先判断是否值得委派，再按任务选择档位；只使用保存的候选组合，不会自动升级模型。")
+                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                if let validation = store.workerValidationMessage {
+                    Text(validation).font(.system(size: 11)).foregroundStyle(Theme.red)
+                }
+                executionSection
                 Text(store.workerDefaultSummary).font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             PanelSection(title: "启用方式", footnote: "首次执行和每次修正各算一次；用完后停止，并说明还剩哪些工作。") {
@@ -263,6 +289,28 @@ struct SettingsView: View {
         }
         .disabled(store.isBusy)
         .animation(Theme.ease, value: changeCount)
+    }
+
+    private var executionSection: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("最近任务").font(.system(size: 11.5, weight: .semibold))
+            if let status = store.executionStatus {
+                Text(status.goal.isEmpty ? status.taskID : status.goal)
+                Text("\(status.taskID) · 更新：\(status.updatedAt)")
+                Text(status.capacitySummary)
+                Text(status.queueSummary)
+                if !status.readyWorkstreams.isEmpty { Text("依赖已满足：" + status.readyWorkstreams.joined(separator: "、")) }
+                ForEach(status.waitingWorkstreams) { item in Text("等待 \(item.id)：\(item.reason)") }
+                Text("所选项目最近任务的主控报告，可能来自其他聊天；非实时宿主遥测。刷新可重新读取。")
+            } else {
+                Text("当前宿主容量：派发时确认/未知")
+                Text(store.scope == "global" ? "全局范围不显示项目任务。" : "当前项目暂无任务报告。")
+            }
+        }
+        .font(.system(size: 11)).foregroundStyle(Theme.muted)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+        .background(Theme.card2, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
     }
 
     private var plannerSection: some View {
@@ -462,6 +510,11 @@ struct SettingsView: View {
     }
 
     // MARK: Bindings
+
+    private func profile(_ tier: WorkerTier) -> Binding<ModelChoice> {
+        Binding(get: { draft?.workflow.workerProfiles[tier.rawValue] ?? ModelChoice(model: "", reasoningEffort: "") },
+                set: { store.draft?.workflow.workerProfiles[tier.rawValue] = $0 })
+    }
 
     private func choice(coordinator: Bool) -> Binding<ModelChoice> {
         Binding(get: {

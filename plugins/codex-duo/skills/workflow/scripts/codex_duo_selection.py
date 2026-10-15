@@ -121,7 +121,7 @@ def default_selection(catalog):
 
 DEFAULT_WORKFLOW = {'activation': 'manual', 'coordinator_mode': 'current_thread',
                     'max_worker_turns': 3, 'max_parallel_workers': 1, 'completion_mode': 'return',
-                    'agent_activity': 'balanced',
+                    'agent_activity': 'balanced', 'worker_strategy': 'fixed', 'worker_profiles': {},
                     'planner_mode': 'disabled', 'planner_model': '',
                     'planner_reasoning_effort': '', 'max_planner_turns': 1}
 
@@ -137,6 +137,16 @@ def validate_workflow(value, *, legacy_completion=False):
         raise SelectionError('invalid_workflow', '使用方式必须为项目自动使用或手动使用。')
     if value.get('agent_activity', 'balanced') not in ('conservative', 'balanced', 'aggressive'):
         raise SelectionError('invalid_workflow', '代理积极程度必须为 conservative、balanced 或 aggressive。')
+    if value.get('worker_strategy', 'fixed') not in ('fixed', 'adaptive'):
+        raise SelectionError('invalid_workflow', '执行策略必须为 fixed 或 adaptive。')
+    profiles = value.get('worker_profiles', {})
+    if (not isinstance(profiles, dict) or (profiles and set(profiles) != set(WORKER_TIERS))
+            or (value.get('worker_strategy') == 'adaptive' and not profiles)):
+        raise SelectionError('invalid_workflow', '自动分级需要轻量、标准、复杂三组完整候选；固定模式可不配置候选。')
+    for choice in profiles.values():
+        if (not isinstance(choice, dict) or set(choice) != {'model', 'reasoning_effort'}
+                or any(not isinstance(v, str) or not v.strip() for v in choice.values())):
+            raise SelectionError('invalid_workflow', '每档候选必须提供模型与推理强度。')
     if value['coordinator_mode'] not in ('current_thread', 'selected_model'):
         raise SelectionError('invalid_workflow', '主控方式必须为当前聊天或指定模型。')
     if type(value['max_worker_turns']) is not int or not 1 <= value['max_worker_turns'] <= 10:
@@ -157,6 +167,13 @@ def validate_workflow(value, *, legacy_completion=False):
 
 
 ACTIVITIES = ('conservative', 'balanced', 'aggressive')
+WORKER_TIERS = ('light', 'standard', 'complex')
+
+
+def suggested_worker_profiles(worker, catalog):
+    """Draft suggestions only; never enable tiering or upgrade the saved worker."""
+    light = next((p['selection']['worker'] for p in presets(catalog) if p['id'] == 'light'), worker)
+    return json.loads(canonical({'light': light, 'standard': worker, 'complex': worker}))
 ASSESSMENT_SCHEMA = {
     'type': 'object',
     'properties': {
@@ -211,6 +228,8 @@ def delegation_decision(activity, invocation, assessment=None):
 
 
 def validate_planner_selection(workflow, catalog):
+    for choice in workflow.get('worker_profiles', {}).values():
+        validate_selection({'coordinator': choice, 'worker': choice}, catalog)
     if workflow.get('planner_mode', 'disabled') == 'plan_only':
         choice = {'model': workflow['planner_model'], 'reasoning_effort': workflow['planner_reasoning_effort']}
         validate_selection({'coordinator': choice, 'worker': choice}, catalog)
@@ -218,9 +237,9 @@ def validate_planner_selection(workflow, catalog):
 
 def saved_workflow(document):
     # Legacy configurations remain manual until the user explicitly enables automatic use.
-    return {**DEFAULT_WORKFLOW,
+    return json.loads(canonical({**DEFAULT_WORKFLOW,
             **validate_workflow((document or {}).get('workflow', DEFAULT_WORKFLOW), legacy_completion=True),
-            'completion_mode': 'return'}
+            'completion_mode': 'return'}))
 
 
 def safe_directory(path):
@@ -413,6 +432,7 @@ def prepare_handoff(task, selection, catalog, destination, revision, workflow=No
                'catalog_fingerprint': catalog['fingerprint'], 'selection_revision': revision}
     if workflow is not None:
         payload['workflow'] = validate_workflow(workflow, legacy_completion=legacy_completion)
+        validate_planner_selection(workflow, catalog)
     if worker_resolution is not None:
         payload['worker_resolution'] = worker_resolution
     if delegation is not None:

@@ -3,7 +3,7 @@
 > **一个规划，一个执行** —— 面向 OpenAI Codex 的原生双代理协同开发系统。  
 > 主控会话负责任务拆解与代码验收，原生子代理在受控边界与预算内高效交付代码。
 
-[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)]()
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%2B-brightgreen.svg)]()
 [![Swift](https://img.shields.io/badge/swift-6.0%2B-orange.svg)]()
@@ -205,7 +205,24 @@ For user-requested implementation or bug fixes, load the `codex-duo` skill and r
 `invocation=explicit` 只代表用户明确要求委派，不能把普通开发请求标成 explicit 来绕过判断。
 服务验证的是当前聊天提供的判断及规则，不会自行理解用户请求，也不能拦截绕过插件直接调用的宿主代理工具。
 
-### 轻任务与本次 Worker 覆盖
+### 按子任务自动分级与多个代理
+
+设置中的“执行策略”提供 **固定** 和 **自动分级**。旧配置保持固定；启用自动分级后，
+可分别保存轻量、标准、复杂三档的模型与推理强度组合。当前聊天先判断是否值得派代理，
+再按每个子任务的难度选择已保存的候选并记录理由，不额外启动分类器。
+轻量适合重复性修改与明确检查，标准适合一般模块实现，复杂适合较难的推理与依赖分析。
+首次切换只填入草稿建议：目录支持时轻量为 Luna low，标准和复杂沿用当前执行组合；保存后才生效。
+不会自动换成更强模型；本次显式 Worker 覆盖优先，失败修正仍沿用原选择并消耗原预算。
+
+多个独立子任务可以选择不同组合。并行数量取决于保存的最大并行数（1～3）、
+本任务的宿主容量、依赖完成情况与剩余总执行次数。容量为 1 时可排队逐个完成，
+文件归属重叠的工作应合并，不为凑数拆分。主线程负责预留、调用原生工具和验收；插件不自行启动模型。
+
+面板显示“最近任务”的已报告容量、占用（已预留/执行中）、等待原因和记录时间。
+这是当前所选项目的最后一次记录，刷新后更新，不是实时宿主监控，也不代表当前聊天。
+没有记录时显示容量待派发确认。代理积极程度仍默认均衡，与模型分级、并行上限分别控制。
+
+### 轻任务预设与临时覆盖
 
 现有设置界面新增“轻任务”预设：Worker 为 `gpt-6-luna / low`，当前聊天规划验收，
 不额外启动 Planner。选择只填入草稿；点击保存才修改所选范围的默认，已有预设和设置保留。
@@ -311,6 +328,8 @@ Codex Duo 采用分层继承机制，确保灵活性与整洁度：
 | `workflow.coordinator_mode` | `string` | `current_thread`（当前会话担任主控协调者） |
 | `workflow.max_worker_turns` | `integer` | Worker 执行总轮数上限（默认 `10`，首次派发与后续纠错共享该预算） |
 | `workflow.max_parallel_workers` | `integer` | 最大并发 Worker 数量（可选 `1` / `2` / `3`，默认 `1`） |
+| `workflow.worker_strategy` | `string` | 固定 `fixed`（兼容默认）或自动分级 `adaptive` |
+| `workflow.worker_profiles` | `object` | light / standard / complex 三组模型与推理强度；自动分级必须完整配置 |
 | `worker.model` | `string` | 执行代理所使用的模型（如 `gpt-6.1-sol`、`gpt-6-luna` 等） |
 | `worker.reasoning_effort` | `string` | 执行代理的思考强度（`low` / `medium` / `high`） |
 | `workflow.planner_mode` | `string` | 独立规划模式：`disabled`（默认关闭） \| `plan_only`（开启只读规划） |

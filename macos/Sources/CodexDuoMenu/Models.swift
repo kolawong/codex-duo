@@ -80,12 +80,22 @@ enum AgentActivity: String, CaseIterable {
     }
 }
 
+enum WorkerTier: String, CaseIterable, Identifiable {
+    case light, standard, complex
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .light: "轻量"; case .standard: "标准"; case .complex: "复杂" }
+    }
+}
+
 struct Workflow: Codable, Equatable {
     var activation: String
     var coordinatorMode: String
     var maxWorkerTurns: Int
     var maxParallelWorkers: Int = 1
     var agentActivity: String = "balanced"
+    var workerStrategy: String = "fixed"
+    var workerProfiles: [String: ModelChoice] = [:]
     var plannerMode: String = "disabled"
     var plannerModel: String = ""
     var plannerReasoningEffort: String = ""
@@ -101,6 +111,8 @@ struct Workflow: Codable, Equatable {
         case maxWorkerTurns = "max_worker_turns"
         case maxParallelWorkers = "max_parallel_workers"
         case agentActivity = "agent_activity"
+        case workerStrategy = "worker_strategy"
+        case workerProfiles = "worker_profiles"
         case plannerMode = "planner_mode"
         case plannerModel = "planner_model"
         case plannerReasoningEffort = "planner_reasoning_effort"
@@ -123,13 +135,24 @@ struct Workflow: Codable, Equatable {
             throw DecodingError.dataCorruptedError(forKey: .agentActivity, in: values,
                 debugDescription: "Unsupported agent activity")
         }
+        workerStrategy = values.contains(.workerStrategy) ? try values.decode(String.self, forKey: .workerStrategy) : "fixed"
+        workerProfiles = values.contains(.workerProfiles) ? try values.decode([String: ModelChoice].self, forKey: .workerProfiles) : [:]
         plannerMode = values.contains(.plannerMode) ? try values.decode(String.self, forKey: .plannerMode) : "disabled"
         plannerModel = values.contains(.plannerModel) ? try values.decode(String.self, forKey: .plannerModel) : ""
         plannerReasoningEffort = values.contains(.plannerReasoningEffort) ? try values.decode(String.self, forKey: .plannerReasoningEffort) : ""
         maxPlannerTurns = values.contains(.maxPlannerTurns) ? try values.decode(Int.self, forKey: .maxPlannerTurns) : 1
     }
+    var hasCompleteWorkerProfiles: Bool {
+        Set(workerProfiles.keys) == Set(WorkerTier.allCases.map(\.rawValue))
+    }
+    func workerChoicesValid(in catalog: Catalog?) -> Bool {
+        (workerProfiles.isEmpty && workerStrategy == "fixed")
+            || (hasCompleteWorkerProfiles && workerProfiles.values.allSatisfy { $0.isValid(in: catalog) })
+    }
     var isValid: Bool {
-        ["manual", "automatic_project"].contains(activation)
+        ["fixed", "adaptive"].contains(workerStrategy)
+            && ((workerProfiles.isEmpty && workerStrategy == "fixed") || hasCompleteWorkerProfiles)
+            && ["manual", "automatic_project"].contains(activation)
             && ["current_thread", "selected_model"].contains(coordinatorMode)
             && (1...10).contains(maxWorkerTurns) && (1...3).contains(maxParallelWorkers)
             && AgentActivity(rawValue: agentActivity) != nil
@@ -169,7 +192,44 @@ struct SavedLayers: Decodable {
     var project: SavedState
 }
 
+struct ExecutionStatus: Decodable, Equatable {
+    struct WaitingWorkstream: Decodable, Equatable, Identifiable {
+        var id: String
+        var reason: String
+    }
+    var handoffID: String
+    var taskID: String
+    var goal: String
+    var updatedAt: String
+    var configuredMaxParallelWorkers: Int
+    var reportedHostCapacity: Int
+    var effectiveMaxParallelWorkers: Int
+    var occupiedWorkers: Int
+    var queuedWorkstreams: Int
+    var readyWorkstreams: [String]
+    var waitingWorkstreams: [WaitingWorkstream]
+    enum CodingKeys: String, CodingKey {
+        case handoffID = "handoff_id", taskID = "task_id", goal
+        case updatedAt = "updated_at"
+        case configuredMaxParallelWorkers = "configured_max_parallel_workers"
+        case reportedHostCapacity = "reported_host_capacity"
+        case effectiveMaxParallelWorkers = "effective_max_parallel_workers"
+        case occupiedWorkers = "occupied_workers", queuedWorkstreams = "queued_workstreams"
+        case readyWorkstreams = "ready_workstreams", waitingWorkstreams = "waiting_workstreams"
+        case remainingWorkerTurns = "remaining_worker_turns"
+    }
+    var remainingWorkerTurns: Int
+    var capacitySummary: String {
+        "配置上限：\(configuredMaxParallelWorkers) · 已报告容量：\(reportedHostCapacity) · 有效上限：\(effectiveMaxParallelWorkers)"
+    }
+    var queueSummary: String {
+        "占用（已预留/执行中）：\(occupiedWorkers) · 等待：\(queuedWorkstreams) · 剩余执行次数：\(remainingWorkerTurns)"
+    }
+}
+
 struct ServiceState: Decodable {
+    var suggestedWorkerProfiles: [String: ModelChoice]? = nil
+    var executionStatus: ExecutionStatus? = nil
     var presets: [WorkerPreset]? = nil
     var scope: String? = nil
     var source: String? = nil
@@ -185,6 +245,8 @@ struct ServiceState: Decodable {
     var projectRoot: String?
     enum CodingKeys: String, CodingKey {
         case catalog, saved, workflow, error, scope, source, effective, layers, presets
+        case suggestedWorkerProfiles = "suggested_worker_profiles"
+        case executionStatus = "execution_status"
         case globalRevision = "global_revision"
         case projectOptIn = "project_opt_in"
         case defaultSelection = "default"
