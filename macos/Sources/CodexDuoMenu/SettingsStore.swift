@@ -171,8 +171,8 @@ final class SettingsStore {
         projectEnabled = state.projectOptIn?.enabled == true
         savedWarning = saved.error?.message ?? (incomingScope == "project" ? state.effective?.error?.message : nil)
         let incoming = Draft(selection: selection, workflow: state.workflow ?? saved.document?.workflow ?? .initial)
-        if isDirty && !discardDraft {
-            hasExternalChange = saved.revision != revision || state.globalRevision != globalRevision
+        if (isDirty || hasExternalChange) && !discardDraft {
+            hasExternalChange = hasExternalChange || saved.revision != revision || state.globalRevision != globalRevision
             if hasExternalChange { notice = "这份配置刚在别处被修改。你的修改还在，重新载入后才能保存。" }
             return
         }
@@ -220,17 +220,6 @@ final class SettingsStore {
             if (error as? ServiceError)?.code == "revision_conflict" { hasExternalChange = true }
         }
     }
-
-
-
-    func selectModel(_ id: String, coordinator: Bool) {
-        guard var draft else { return }
-        if coordinator { draft.selection.coordinator.selectModel(id, catalog: catalog) }
-        else { draft.selection.worker.selectModel(id, catalog: catalog) }
-        self.draft = draft
-        notice = hasExternalChange ? notice : nil
-    }
-
     func save() async {
         guard canSave, let sent = draft else { return }
         isBusy = true

@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import sys
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 

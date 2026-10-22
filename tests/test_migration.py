@@ -1,6 +1,5 @@
 """Migration fixtures consume durable budgets, never real model calls."""
 import json
-from pathlib import Path
 import unittest
 from unittest.mock import patch
 import test_planner
@@ -113,7 +112,6 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(before, manifest(self.root / '.codex-duo'))
 
     def test_catalog_exposes_only_legal_current_names_and_rejects_old_calls(self):
-        import re
         for tool in mcp.tool_definitions():
             self.assertRegex(tool['name'], r'^codex_duo_[a-z_]+$')
             self.assertNotIn('fusion', json.dumps(tool))

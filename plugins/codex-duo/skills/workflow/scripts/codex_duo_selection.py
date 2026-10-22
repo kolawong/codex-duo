@@ -323,7 +323,7 @@ class SelectionStore:
             if document.get('scope') == 'project_fusion_defaults':
                 document = {**document, 'scope': 'project_codex_duo_defaults'}
             return {'document': document, 'revision': revision, 'error': None}
-        except (ValueError, KeyError, TypeError) as exc:
+        except (ValueError, KeyError, TypeError):
             return {'document': None, 'revision': revision,
                     'error': {'code': 'saved_config_invalid',
                               'message': '已保存配置损坏或不再受目录支持。可重新选择并保存；原文件会备份。'}}

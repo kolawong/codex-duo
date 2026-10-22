@@ -8,7 +8,7 @@ from unittest.mock import patch
 import test_parallel as worker
 from test_native import mcp
 from codex_duo_parallel import ParallelExecution
-from codex_duo_selection import SelectionError, SelectionStore, prepare_handoff, saved_workflow
+from codex_duo_selection import SelectionError, prepare_handoff, saved_workflow
 
 
 class ReturnFlowTests(unittest.TestCase):

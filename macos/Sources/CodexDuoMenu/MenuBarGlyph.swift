@@ -52,7 +52,6 @@ final class GlyphAnimator {
     private var timer: Timer?
     private var start = Date()
     private var opening = true
-    private(set) var isOpen = false
 
     init(button: NSStatusBarButton) {
         self.button = button
@@ -62,7 +61,6 @@ final class GlyphAnimator {
     /// Opening: the rings part, then snap together and the overlap lights.
     /// Closing: the light fades and the rings settle.
     func play(open: Bool) {
-        isOpen = open
         opening = open
         start = Date()
         timer?.invalidate()

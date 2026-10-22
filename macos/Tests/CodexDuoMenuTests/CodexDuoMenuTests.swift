@@ -258,11 +258,38 @@ final class CodexDuoMenuTests: XCTestCase {
         XCTAssertFalse(store.isDirty)
     }
 
+    @MainActor func testConflictRemainsUntilExplicitReloadEvenAfterRevertingDraft() async throws {
+        let service = StubService(try state())
+        let store = SettingsStore(projectRoot: "/isolated/project", client: service)
+        await store.refresh()
+        let original = store.draft
+        store.draft?.workflow.maxWorkerTurns = 4
+        service.response = try state(revision: "external", effort: "low")
+        await store.refresh()
+        XCTAssertTrue(store.hasExternalChange)
+
+        store.draft = original
+        await store.refresh()
+        XCTAssertEqual(store.draft, original)
+        XCTAssertEqual(store.revision, "first")
+        XCTAssertTrue(store.hasExternalChange)
+        XCTAssertFalse(store.canSave)
+
+        store.draft?.workflow.maxWorkerTurns = 5
+        service.saveError = ServiceError(code: "unexpected_save", message: "Conflict must block saving")
+        await store.save()
+        XCTAssertNil(service.sent)
+        await store.refresh(discardDraft: true)
+        XCTAssertEqual(store.revision, "external")
+        XCTAssertEqual(store.draft?.selection.worker.reasoningEffort, "low")
+        XCTAssertFalse(store.hasExternalChange)
+    }
+
     @MainActor func testFailedReloadKeepsDraftAndDoesNotSave() async throws {
         let service = StubService(try state())
         let store = SettingsStore(projectRoot: "/isolated/project", client: service)
         await store.refresh()
-        store.selectModel("beta", coordinator: false)
+        store.draft?.selection.worker.selectModel("beta", catalog: store.catalog)
         let draft = store.draft
         service.readError = ServiceError(code: "catalog_unavailable", message: "目录不可用")
         await store.refresh(discardDraft: true)
@@ -291,7 +318,7 @@ final class CodexDuoMenuTests: XCTestCase {
         let service = StubService(try state())
         let store = SettingsStore(projectRoot: "/isolated/project", client: service)
         await store.refresh()
-        store.selectModel("beta", coordinator: true)
+        store.draft?.selection.coordinator.selectModel("beta", catalog: store.catalog)
         store.draft?.workflow.coordinatorMode = "selected_model"
         store.draft?.workflow.coordinatorMode = "current_thread"
         let draft = store.draft!

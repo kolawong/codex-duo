@@ -5,10 +5,8 @@ if not _test_os.environ.get('CODEX_DUO_TEST_CODEX_HOME'):
     _test_atexit.register(_test_home.cleanup)
     _test_os.environ['CODEX_DUO_TEST_CODEX_HOME'] = _test_home.name
 _test_os.environ['CODEX_HOME'] = _test_os.environ['CODEX_DUO_TEST_CODEX_HOME']
-import copy
 import importlib.util
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys

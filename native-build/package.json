@@ -4,6 +4,12 @@
     "esbuild": "0.25.12"
   },
   "devDependencies": {
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "@modelcontextprotocol/client": "2.3.1"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test-panel.mjs && node test-panel.cjs && node test-client.mjs",
+    "check:syntax": "node --check bridge.js && node --check build.mjs && node --check test-panel.mjs && node --check test-panel.cjs && node --check test-client.mjs && node --check ../panel/static/app.js"
   }
 }

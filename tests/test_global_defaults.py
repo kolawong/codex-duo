@@ -1,6 +1,5 @@
 """Global inheritance, fail-closed resolution and actual-root routing."""
 import copy
-import json
 import os
 from pathlib import Path
 import tempfile

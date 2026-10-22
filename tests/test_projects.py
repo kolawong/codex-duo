@@ -14,7 +14,7 @@ from unittest.mock import patch
 from test_native import mcp, catalog, DELEGATION_ASSESSMENT
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError
-from codex_duo_projects import START, END, BLOCK, project_path
+from codex_duo_projects import START, END, project_path
 
 
 class ProjectTests(unittest.TestCase):

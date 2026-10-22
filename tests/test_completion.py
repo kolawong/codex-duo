@@ -1,6 +1,5 @@
 """Completion behavior uses offline protocol/ledger fixtures; never model execution."""
 import copy
-import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -120,7 +119,6 @@ class PlannerCompletionTests(unittest.TestCase):
         self.run_attempt(); self.execute(planner.ProtocolFixture(self.root))
         path = self.adapter.plans.path(self.pid); before = path.read_bytes()
         a = self.completion(); self.assertEqual(a, self.completion()); self.assertEqual(before, path.read_bytes())
-        self.assertEqual(before, path.read_bytes())
 
 
 class WorkerCompletionTests(unittest.TestCase):

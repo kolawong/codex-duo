@@ -14,7 +14,6 @@ struct SettingsView: View {
     private var draft: Draft? { store.draft }
     private var baseline: Draft? { store.baseline }
     private var justSaved: Bool { !store.isDirty && store.notice?.hasPrefix("已保存") == true }
-    private var canDiscard: Bool { store.isDirty || store.hasExternalChange }
 
     /// Notices worth a banner; a successful save is shown on the save button instead.
     private var visibleNotice: String? { justSaved ? nil : store.notice }

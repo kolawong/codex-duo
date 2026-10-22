@@ -11,10 +11,7 @@ from urllib.parse import urlsplit, parse_qs
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / 'plugins/codex-duo/skills/workflow/scripts'
 sys.path.insert(0, str(SCRIPTS))
-from codex_duo_selection import (SelectionError, SelectionStore, read_catalog, default_selection,
-                              presets, prepare_handoff)
-
-
+from codex_duo_selection import SelectionError, read_catalog
 from codex_duo_service import CodexDuoService
 
 

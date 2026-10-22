@@ -29,7 +29,7 @@ class CodexDuoService:
         effective = layers['effective']
         selected = saved if scope == 'global' else effective
         selection = (selected['document'] or {}).get('selection', default_selection(catalog))
-        return {'catalog': catalog, 'presets': presets(catalog), 'default': (selected['document'] or {}).get('selection', default_selection(catalog)),
+        return {'catalog': catalog, 'presets': presets(catalog), 'default': selection,
                 'saved': saved, 'workflow': saved_workflow(selected['document']),
                 'suggested_worker_profiles': suggested_worker_profiles(selection['worker'], catalog),
                 'execution_status': self.latest_execution() if scope == 'project' else None,

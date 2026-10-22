@@ -373,9 +373,11 @@ python3.11 -B -m unittest discover -s tests -v
 # 2. 运行 Swift 原生模块测试
 swift test --package-path macos
 
-# 3. 构建前端设置面板
-node native-build/build.mjs
-node native-build/test-panel.mjs
+# 3. 安装锁定依赖，检查语法并运行全部面板 / MCP 测试
+npm --prefix native-build ci
+npm --prefix native-build run check:syntax
+npm --prefix native-build test
+npm --prefix native-build run build
 
 # 4. 重新构建 macOS 菜单栏应用
 bash macos/build.sh

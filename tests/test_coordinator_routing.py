@@ -1,7 +1,6 @@
 """Offline routing regressions. No native spawn or Planner/model execution."""
 import copy
 import hashlib
-import json
 import os
 from pathlib import Path
 import tempfile
@@ -10,7 +9,6 @@ from unittest.mock import patch
 
 from test_native import catalog, mcp
 from codex_duo_service import CodexDuoService
-from codex_duo_selection import SelectionError
 
 
 class CoordinatorRoutingTests(unittest.TestCase):

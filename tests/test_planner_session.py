@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'plugins/codex-duo/skills/workflow/scripts'))
 from codex_duo_service import CodexDuoService
 from codex_duo_selection import SelectionError, default_selection, normalize_catalog
-from codex_duo_planner import PlannerExecution
 from codex_duo_planner_session import SessionPlanner, restricted_command
 
 

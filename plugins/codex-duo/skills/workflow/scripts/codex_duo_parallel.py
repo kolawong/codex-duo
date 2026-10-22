@@ -6,7 +6,7 @@ import re
 import tempfile
 from codex_duo_completion import completion_view
 from codex_duo import verify as verify_evidence, EvidenceError
-from codex_duo_selection import SelectionError, canonical, digest, validate_task
+from codex_duo_selection import SelectionError, digest, validate_task
 from codex_duo_worker import worker_summary, validate_native_dispatch, resolve_stream_worker
 
 

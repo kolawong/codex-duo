@@ -1,5 +1,4 @@
 """Isolated byte fixtures only: never repair/replay a real Worker result."""
-import copy
 import hashlib
 import json
 from pathlib import Path
@@ -206,7 +205,6 @@ class FailedDiffAccountingTests(unittest.TestCase):
 
     def test_rejection_failed_replay_and_copy_never_redispatch_or_change_budget(self):
         self.call('plan', host_capacity=1)
-        identity = {'project_root': str(self.root), 'kind': 'worker', 'task_id': self.plan['handoff_id']}
         r = self.call('reserve', host_capacity=1, workstream_id='main')
         self.assertEqual({'snapshot_before_edit', 'diff_after_edit', 'preflight_result'}, set(r['evidence_commands']))
         self.evidence(r['evidence_root'], r['task']); root = Path(r['evidence_root'])

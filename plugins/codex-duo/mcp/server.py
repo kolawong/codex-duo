@@ -2,7 +2,6 @@
 """Local stdio MCP. Only explicit planner_run can launch a restricted model session."""
 import argparse
 import json
-import os
 from pathlib import Path
 import sys
 import base64

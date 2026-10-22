@@ -1,6 +1,5 @@
 """Offline task override, immutable identity and evidence boundaries. No model calls."""
 import concurrent.futures
-import copy
 import json
 import os
 from pathlib import Path
